@@ -24,3 +24,5 @@ Homestead.json
 Homestead.yaml
 Thumbs.db
 hr_system.sql
+storage/firebase-credentials.json
+.env

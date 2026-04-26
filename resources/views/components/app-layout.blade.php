@@ -72,6 +72,11 @@
                 <i class="fas fa-briefcase"></i> طلبات التوظيف
             </a>
 
+            <div class="nav-section">التقارير</div>
+            <a href="{{ route('reports.index') }}" class="nav-link {{ request()->routeIs('reports.*') ? 'active' : '' }}">
+                <i class="fas fa-chart-bar"></i> تقارير الموظفين
+            </a>
+
             <div class="nav-section">بوابة الموظف</div>
             <a href="{{ route('portal.index') }}" class="nav-link {{ request()->routeIs('portal.*') ? 'active' : '' }}">
                 <i class="fas fa-user-circle"></i> بوابتي

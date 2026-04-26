@@ -192,83 +192,117 @@
             {{-- إضافة قيد محاسبي يدوي --}}
             <div class="card shadow-sm mb-3 border-primary">
                 <div class="card-header py-2 bg-primary text-white small fw-semibold">
-                    <a class="text-decoration-none text-white" data-bs-toggle="collapse" href="#addEntrySection">
-                        <i class="fas fa-plus-circle me-1"></i>إضافة قيد محاسبي
+                    <a class="text-decoration-none text-white d-flex justify-content-between align-items-center"
+                       data-bs-toggle="collapse" href="#addEntrySection">
+                        <span><i class="fas fa-plus-circle me-1"></i>إضافة قيد محاسبي</span>
+                        <i class="fas fa-chevron-down fa-xs opacity-75"></i>
                     </a>
                 </div>
                 <div class="collapse" id="addEntrySection">
-                    <div class="card-body">
-                        <form method="POST" action="{{ route('ledger.entry.store', $employee) }}">
-                            @csrf
-                            <div class="mb-2">
-                                <label class="small fw-semibold mb-1">التاريخ <span class="text-danger">*</span></label>
+                    <form method="POST" action="{{ route('ledger.entry.store', $employee) }}">
+                        @csrf
+                        <div class="list-group list-group-flush">
+
+                            {{-- التاريخ --}}
+                            <div class="list-group-item px-3 py-2">
+                                <label class="small fw-semibold text-muted mb-1 d-block">
+                                    <i class="fas fa-calendar-alt fa-xs me-1 text-primary"></i>التاريخ <span class="text-danger">*</span>
+                                </label>
                                 <input type="date" name="entry_date" class="form-control form-control-sm"
                                     value="{{ old('entry_date', now()->toDateString()) }}" required>
                             </div>
-                            <div class="mb-2">
-                                <label class="small fw-semibold mb-1">نوع القيد <span class="text-danger">*</span></label>
-                                <select name="entry_type" class="form-select form-select-sm" required>
-                                    <option value="">— اختر —</option>
-                                    <optgroup label="دائن (لصالح الموظف)">
-                                        <option value="salary" {{ old('entry_type') == 'salary' ? 'selected' : '' }}>راتب ساعات</option>
-                                        <option value="overtime" {{ old('entry_type') == 'overtime' ? 'selected' : '' }}>أوفرتايم</option>
-                                        <option value="bonus" {{ old('entry_type') == 'bonus' ? 'selected' : '' }}>مكافأة</option>
-                                        <option value="expense" {{ old('entry_type') == 'expense' ? 'selected' : '' }}>مصروف مستحق</option>
-                                        <option value="loan_disbursement" {{ old('entry_type') == 'loan_disbursement' ? 'selected' : '' }}>صرف سلفة</option>
-                                    </optgroup>
-                                    <optgroup label="مدين (على الموظف)">
-                                        <option value="deduction_late" {{ old('entry_type') == 'deduction_late' ? 'selected' : '' }}>خصم تأخير</option>
-                                        <option value="deduction_absence" {{ old('entry_type') == 'deduction_absence' ? 'selected' : '' }}>خصم غياب</option>
-                                        <option value="deduction_manual" {{ old('entry_type') == 'deduction_manual' ? 'selected' : '' }}>خصم يدوي</option>
-                                        <option value="loan_installment" {{ old('entry_type') == 'loan_installment' ? 'selected' : '' }}>قسط سلفة</option>
-                                        <option value="payment" {{ old('entry_type') == 'payment' ? 'selected' : '' }}>دفع للموظف</option>
-                                        <option value="withdrawal" {{ old('entry_type') == 'withdrawal' ? 'selected' : '' }}>مسحوبات</option>
-                                    </optgroup>
-                                    <optgroup label="عام">
-                                        <option value="adjustment" {{ old('entry_type') == 'adjustment' ? 'selected' : '' }}>تسوية</option>
-                                        <option value="opening_balance" {{ old('entry_type') == 'opening_balance' ? 'selected' : '' }}>رصيد افتتاحي</option>
-                                    </optgroup>
-                                </select>
+
+                            {{-- نوع القيد — مدخل حر --}}
+                            <div class="list-group-item px-3 py-2">
+                                <label class="small fw-semibold text-muted mb-1 d-block">
+                                    <i class="fas fa-tag fa-xs me-1 text-primary"></i>نوع القيد <span class="text-danger">*</span>
+                                </label>
+                                <input type="text" name="entry_type" class="form-control form-control-sm"
+                                    value="{{ old('entry_type') }}"
+                                    placeholder="مثال: راتب، مكافأة، خصم تأخير..." required>
                             </div>
-                            <div class="mb-2">
-                                <label class="small fw-semibold mb-1">البيان / الوصف <span class="text-danger">*</span></label>
+
+                            {{-- دائن / مدين --}}
+                            <div class="list-group-item px-3 py-2 bg-light">
+                                <label class="small fw-semibold text-muted mb-2 d-block">
+                                    <i class="fas fa-balance-scale fa-xs me-1 text-primary"></i>الجانب <span class="text-danger">*</span>
+                                </label>
+                                <div class="d-flex gap-2">
+                                    <div class="flex-fill">
+                                        <input type="radio" class="btn-check" name="side" value="credit"
+                                               id="add_side_credit"
+                                               {{ old('side', 'credit') === 'credit' ? 'checked' : '' }} required>
+                                        <label class="btn btn-outline-success btn-sm w-100 fw-semibold" for="add_side_credit">
+                                            <i class="fas fa-arrow-up me-1"></i>دائن (له)
+                                        </label>
+                                    </div>
+                                    <div class="flex-fill">
+                                        <input type="radio" class="btn-check" name="side" value="debit"
+                                               id="add_side_debit"
+                                               {{ old('side') === 'debit' ? 'checked' : '' }}>
+                                        <label class="btn btn-outline-danger btn-sm w-100 fw-semibold" for="add_side_debit">
+                                            <i class="fas fa-arrow-down me-1"></i>مدين (عليه)
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {{-- المبلغ --}}
+                            <div class="list-group-item px-3 py-2">
+                                <label class="small fw-semibold text-muted mb-1 d-block">
+                                    <i class="fas fa-coins fa-xs me-1 text-primary"></i>المبلغ (₪) <span class="text-danger">*</span>
+                                </label>
+                                <input type="number" name="amount" class="form-control form-control-sm"
+                                    step="0.01" min="0.01"
+                                    value="{{ old('amount') }}" placeholder="0.00" required>
+                            </div>
+
+                            {{-- البيان --}}
+                            <div class="list-group-item px-3 py-2">
+                                <label class="small fw-semibold text-muted mb-1 d-block">
+                                    <i class="fas fa-align-right fa-xs me-1 text-primary"></i>البيان / الوصف <span class="text-danger">*</span>
+                                </label>
                                 <input type="text" name="description" class="form-control form-control-sm"
                                     value="{{ old('description') }}" placeholder="مثال: راتب أسبوع W17" required>
                             </div>
-                            <div class="mb-2">
-                                <label class="small fw-semibold mb-1">كود الأسبوع</label>
-                                <input type="text" name="fiscal_period" class="form-control form-control-sm"
-                                    value="{{ old('fiscal_period') }}" placeholder="مثال: 2026-W17">
+
+                            {{-- حقول إضافية (accordion داخلي) --}}
+                            <div class="list-group-item px-3 py-2">
+                                <a class="small text-muted text-decoration-none d-flex justify-content-between align-items-center"
+                                   data-bs-toggle="collapse" href="#addOptionalFields">
+                                    <span><i class="fas fa-sliders-h fa-xs me-1"></i>حقول إضافية <small class="opacity-50">(اختياري)</small></span>
+                                    <i class="fas fa-chevron-down fa-xs opacity-50"></i>
+                                </a>
+                                <div class="collapse mt-2" id="addOptionalFields">
+                                    <div class="mb-2">
+                                        <label class="small text-muted mb-1">كود الأسبوع</label>
+                                        <input type="text" name="fiscal_period" class="form-control form-control-sm"
+                                            value="{{ old('fiscal_period') }}" placeholder="مثال: 2026-W17">
+                                    </div>
+                                    <div class="row g-2">
+                                        <div class="col-6">
+                                            <label class="small text-muted mb-1">من تاريخ</label>
+                                            <input type="date" name="period_start" class="form-control form-control-sm"
+                                                value="{{ old('period_start') }}">
+                                        </div>
+                                        <div class="col-6">
+                                            <label class="small text-muted mb-1">إلى تاريخ</label>
+                                            <input type="date" name="period_end" class="form-control form-control-sm"
+                                                value="{{ old('period_end') }}">
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="row g-2 mb-2">
-                                <div class="col-6">
-                                    <label class="small fw-semibold mb-1">من تاريخ</label>
-                                    <input type="date" name="period_start" class="form-control form-control-sm"
-                                        value="{{ old('period_start') }}">
-                                </div>
-                                <div class="col-6">
-                                    <label class="small fw-semibold mb-1">إلى تاريخ</label>
-                                    <input type="date" name="period_end" class="form-control form-control-sm"
-                                        value="{{ old('period_end') }}">
-                                </div>
+
+                            {{-- زر الحفظ --}}
+                            <div class="list-group-item px-3 py-2">
+                                <button type="submit" class="btn btn-primary btn-sm w-100">
+                                    <i class="fas fa-plus me-1"></i>إضافة القيد
+                                </button>
                             </div>
-                            <div class="row g-2 mb-3">
-                                <div class="col-6">
-                                    <label class="small fw-semibold mb-1 text-success">دائن (له) ₪</label>
-                                    <input type="number" name="credit" class="form-control form-control-sm"
-                                        step="0.01" min="0" value="{{ old('credit') }}" placeholder="0.00">
-                                </div>
-                                <div class="col-6">
-                                    <label class="small fw-semibold mb-1 text-danger">مدين (عليه) ₪</label>
-                                    <input type="number" name="debit" class="form-control form-control-sm"
-                                        step="0.01" min="0" value="{{ old('debit') }}" placeholder="0.00">
-                                </div>
-                            </div>
-                            <button type="submit" class="btn btn-primary btn-sm w-100">
-                                <i class="fas fa-plus me-1"></i>إضافة القيد
-                            </button>
-                        </form>
-                    </div>
+
+                        </div>
+                    </form>
                 </div>
             </div>
 
@@ -473,61 +507,85 @@
             </div>
             <form action="{{ route('ledger.entry.update', $entry) }}" method="POST">
                 @csrf @method('PUT')
-                <div class="modal-body">
-                    <div class="row g-2">
-                        <div class="col-6">
-                            <label class="small fw-semibold mb-1">التاريخ <span class="text-danger">*</span></label>
-                            <input type="date" name="entry_date" class="form-control form-control-sm"
-                                value="{{ $entry->entry_date?->format('Y-m-d') }}" required>
+                <div class="modal-body p-0">
+                    <div class="list-group list-group-flush">
+
+                        {{-- التاريخ + نوع القيد --}}
+                        <div class="list-group-item px-3 py-2">
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <label class="small fw-semibold text-muted mb-1 d-block">التاريخ <span class="text-danger">*</span></label>
+                                    <input type="date" name="entry_date" class="form-control form-control-sm"
+                                        value="{{ $entry->entry_date?->format('Y-m-d') }}" required>
+                                </div>
+                                <div class="col-6">
+                                    <label class="small fw-semibold text-muted mb-1 d-block">نوع القيد <span class="text-danger">*</span></label>
+                                    <input type="text" name="entry_type" class="form-control form-control-sm"
+                                        value="{{ $entry->entry_type }}"
+                                        placeholder="مثال: راتب، مكافأة..." required>
+                                </div>
+                            </div>
                         </div>
-                        <div class="col-6">
-                            <label class="small fw-semibold mb-1">نوع القيد <span class="text-danger">*</span></label>
-                            <select name="entry_type" class="form-select form-select-sm" required>
-                                @foreach([
-                                    'salary'=>'راتب ساعات','overtime'=>'أوفرتايم','bonus'=>'مكافأة',
-                                    'expense'=>'مصروف مستحق','adjustment'=>'تسوية',
-                                    'deduction_late'=>'خصم تأخير','deduction_absence'=>'خصم غياب',
-                                    'deduction_manual'=>'خصم يدوي','loan_installment'=>'قسط سلفة',
-                                    'loan_disbursement'=>'صرف سلفة','withdrawal'=>'مسحوبات',
-                                    'payment'=>'دفع للموظف','opening_balance'=>'رصيد افتتاحي'
-                                ] as $val => $lbl)
-                                    <option value="{{ $val }}" {{ $entry->entry_type === $val ? 'selected' : '' }}>{{ $lbl }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-                        <div class="col-12">
-                            <label class="small fw-semibold mb-1">البيان <span class="text-danger">*</span></label>
+
+                        {{-- البيان --}}
+                        <div class="list-group-item px-3 py-2">
+                            <label class="small fw-semibold text-muted mb-1 d-block">البيان <span class="text-danger">*</span></label>
                             <input type="text" name="description" class="form-control form-control-sm"
                                 value="{{ $entry->description }}" required>
                         </div>
-                        <div class="col-6">
-                            <label class="small fw-semibold mb-1">كود الأسبوع</label>
-                            <input type="text" name="fiscal_period" class="form-control form-control-sm"
-                                value="{{ $entry->fiscal_period }}" placeholder="2026-W17">
+
+                        {{-- دائن / مدين --}}
+                        <div class="list-group-item px-3 py-2 bg-light">
+                            <label class="small fw-semibold text-muted mb-2 d-block">الجانب <span class="text-danger">*</span></label>
+                            <div class="d-flex gap-2 mb-0">
+                                <div class="flex-fill">
+                                    <input type="radio" class="btn-check" name="side" value="credit"
+                                           id="edit_side_credit_{{ $entry->id }}"
+                                           {{ $entry->credit > 0 ? 'checked' : '' }} required>
+                                    <label class="btn btn-outline-success btn-sm w-100 fw-semibold" for="edit_side_credit_{{ $entry->id }}">
+                                        <i class="fas fa-arrow-up me-1"></i>دائن (له)
+                                    </label>
+                                </div>
+                                <div class="flex-fill">
+                                    <input type="radio" class="btn-check" name="side" value="debit"
+                                           id="edit_side_debit_{{ $entry->id }}"
+                                           {{ $entry->debit > 0 ? 'checked' : '' }}>
+                                    <label class="btn btn-outline-danger btn-sm w-100 fw-semibold" for="edit_side_debit_{{ $entry->id }}">
+                                        <i class="fas fa-arrow-down me-1"></i>مدين (عليه)
+                                    </label>
+                                </div>
+                            </div>
                         </div>
-                        <div class="col-6">
-                            {{-- فراغ --}}
+
+                        {{-- المبلغ --}}
+                        <div class="list-group-item px-3 py-2">
+                            <label class="small fw-semibold text-muted mb-1 d-block">المبلغ (₪) <span class="text-danger">*</span></label>
+                            <input type="number" name="amount" class="form-control form-control-sm"
+                                step="0.01" min="0.01"
+                                value="{{ $entry->credit > 0 ? $entry->credit : $entry->debit }}" required>
                         </div>
-                        <div class="col-6">
-                            <label class="small fw-semibold mb-1">من تاريخ</label>
-                            <input type="date" name="period_start" class="form-control form-control-sm"
-                                value="{{ $entry->period_start?->format('Y-m-d') }}">
+
+                        {{-- حقول إضافية --}}
+                        <div class="list-group-item px-3 py-2">
+                            <div class="row g-2">
+                                <div class="col-12">
+                                    <label class="small text-muted mb-1">كود الأسبوع</label>
+                                    <input type="text" name="fiscal_period" class="form-control form-control-sm"
+                                        value="{{ $entry->fiscal_period }}" placeholder="2026-W17">
+                                </div>
+                                <div class="col-6">
+                                    <label class="small text-muted mb-1">من تاريخ</label>
+                                    <input type="date" name="period_start" class="form-control form-control-sm"
+                                        value="{{ $entry->period_start?->format('Y-m-d') }}">
+                                </div>
+                                <div class="col-6">
+                                    <label class="small text-muted mb-1">إلى تاريخ</label>
+                                    <input type="date" name="period_end" class="form-control form-control-sm"
+                                        value="{{ $entry->period_end?->format('Y-m-d') }}">
+                                </div>
+                            </div>
                         </div>
-                        <div class="col-6">
-                            <label class="small fw-semibold mb-1">إلى تاريخ</label>
-                            <input type="date" name="period_end" class="form-control form-control-sm"
-                                value="{{ $entry->period_end?->format('Y-m-d') }}">
-                        </div>
-                        <div class="col-6">
-                            <label class="small fw-semibold mb-1 text-success">دائن (له) ₪</label>
-                            <input type="number" name="credit" class="form-control form-control-sm"
-                                step="0.01" min="0" value="{{ $entry->credit > 0 ? $entry->credit : '' }}">
-                        </div>
-                        <div class="col-6">
-                            <label class="small fw-semibold mb-1 text-danger">مدين (عليه) ₪</label>
-                            <input type="number" name="debit" class="form-control form-control-sm"
-                                step="0.01" min="0" value="{{ $entry->debit > 0 ? $entry->debit : '' }}">
-                        </div>
+
                     </div>
                 </div>
                 <div class="modal-footer">

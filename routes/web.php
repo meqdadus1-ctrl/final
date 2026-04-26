@@ -18,6 +18,7 @@ use App\Http\Controllers\PayslipController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\LedgerImportController;
 use App\Http\Controllers\EmployeeUserController;
+use App\Http\Controllers\ReportController;
 
 Route::get('/', function () {
     return redirect()->route('dashboard');
@@ -159,6 +160,13 @@ Route::middleware(['auth'])->group(function () {
     Route::delete('leaves/{leave}',       [LeaveController::class, 'destroy'])->middleware('permission:leaves.edit')->name('leaves.destroy');
     Route::post('leaves/{leave}/approve', [LeaveController::class, 'approve'])->middleware('permission:leaves.approve')->name('leaves.approve');
     Route::post('leaves/{leave}/reject',  [LeaveController::class, 'reject'])->middleware('permission:leaves.reject')->name('leaves.reject');
+
+    // ===== التقارير =====
+    Route::prefix('reports')->name('reports.')->middleware('permission:payslips.view')->group(function () {
+        Route::get('/',          [ReportController::class, 'index'])->name('index');
+        Route::get('/generate',  [ReportController::class, 'generate'])->name('generate');
+        Route::get('/pdf',       [ReportController::class, 'pdf'])->name('pdf');
+    });
 
     // ===== التوظيف =====
     Route::get('jobs',               [JobApplicationController::class, 'index'])->middleware('permission:jobs.view')->name('jobs.index');

@@ -131,21 +131,17 @@ class LedgerController extends Controller
     {
         $request->validate([
             'entry_date'    => 'required|date',
-            'entry_type'    => 'required|in:salary,overtime,bonus,expense,adjustment,deduction_late,deduction_absence,deduction_manual,loan_installment,loan_disbursement,withdrawal,payment,opening_balance',
+            'entry_type'    => 'required|string|max:100',
+            'side'          => 'required|in:credit,debit',
+            'amount'        => 'required|numeric|min:0.01',
             'description'   => 'required|string|max:500',
-            'credit'        => 'nullable|numeric|min:0',
-            'debit'         => 'nullable|numeric|min:0',
             'fiscal_period' => 'nullable|string|max:20',
             'period_start'  => 'nullable|date',
             'period_end'    => 'nullable|date',
         ]);
 
-        $credit = (float) ($request->credit ?? 0);
-        $debit  = (float) ($request->debit  ?? 0);
-
-        if ($credit <= 0 && $debit <= 0) {
-            return back()->with('error', 'يجب إدخال مبلغ دائن أو مدين على الأقل.')->withInput();
-        }
+        $credit = $request->side === 'credit' ? (float)$request->amount : 0.0;
+        $debit  = $request->side === 'debit'  ? (float)$request->amount : 0.0;
 
         $this->ledger->addEntry(
             $employee->id,
@@ -174,21 +170,17 @@ class LedgerController extends Controller
     {
         $request->validate([
             'entry_date'    => 'required|date',
-            'entry_type'    => 'required|in:salary,overtime,bonus,expense,adjustment,deduction_late,deduction_absence,deduction_manual,loan_installment,loan_disbursement,withdrawal,payment,opening_balance',
+            'entry_type'    => 'required|string|max:100',
+            'side'          => 'required|in:credit,debit',
+            'amount'        => 'required|numeric|min:0.01',
             'description'   => 'required|string|max:500',
-            'credit'        => 'nullable|numeric|min:0',
-            'debit'         => 'nullable|numeric|min:0',
             'fiscal_period' => 'nullable|string|max:20',
             'period_start'  => 'nullable|date',
             'period_end'    => 'nullable|date',
         ]);
 
-        $credit = (float) ($request->credit ?? 0);
-        $debit  = (float) ($request->debit  ?? 0);
-
-        if ($credit <= 0 && $debit <= 0) {
-            return back()->with('error', 'يجب إدخال مبلغ دائن أو مدين على الأقل.')->withInput();
-        }
+        $credit = $request->side === 'credit' ? (float)$request->amount : 0.0;
+        $debit  = $request->side === 'debit'  ? (float)$request->amount : 0.0;
 
         $entry->update([
             'entry_date'    => $request->entry_date,

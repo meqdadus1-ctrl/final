@@ -65,6 +65,12 @@
 <a href="{{ route('jobs.index') }}" class="nav-link {{ request()->routeIs('jobs.*') ? 'active' : '' }}">
     <i class="fas fa-briefcase"></i> طلبات التوظيف
 </a>
+
+            <div class="nav-section">التقارير</div>
+            <a href="{{ route('reports.index') }}" class="nav-link {{ request()->routeIs('reports.*') ? 'active' : '' }}">
+                <i class="fas fa-chart-bar"></i> تقارير الموظفين
+            </a>
+
 <a href="{{ route('roles.index') }}" class="nav-link">
     <i class="fas fa-user-shield"></i> الصلاحيات
 </a>

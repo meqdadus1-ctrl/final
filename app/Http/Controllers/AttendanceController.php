@@ -669,26 +669,12 @@ PYEOF
                     $checkIn  = null;
                     $checkOut = null;
 
-                    // تحقق هل الجهاز يرسل type حقيقي (0 أو 1) أم لا
-                    $hasRealTypes = collect($allTimes)->contains(fn($e) => in_array($e['type'], [0, 1, 4, 5]));
-
-                    if ($hasRealTypes) {
-                        // الجهاز يرسل type: 0/4=دخول، 1/5=خروج
-                        foreach ($allTimes as $entry) {
-                            if (in_array($entry['type'], [0, 4]) && !$checkIn) {
-                                $checkIn = $entry['time'];
-                            } elseif (in_array($entry['type'], [1, 5])) {
-                                $checkOut = $entry['time']; // نأخذ آخر خروج
-                            }
-                        }
-                    } else {
-                        // الجهاز لا يرسل type (كل البصمات نفس النوع أو -1)
-                        // القاعدة: أول بصمة = دخول، آخر بصمة = خروج
-                        $checkIn  = $allTimes[0]['time'];
-                        $checkOut = count($allTimes) > 1
-                            ? $allTimes[count($allTimes) - 1]['time']
-                            : null;
-                    }
+                    // الجهاز لا يُميّز دخول/خروج — فقط يسجّل البصمات بالتسلسل
+                    // القاعدة الثابتة: أول بصمة = دخول، آخر بصمة = خروج
+                    $checkIn  = $allTimes[0]['time'];
+                    $checkOut = count($allTimes) > 1
+                        ? $allTimes[count($allTimes) - 1]['time']
+                        : null;
 
                     // فولباك: إذا لم يُحدَّد check_in نأخذ أول وقت
                     if (!$checkIn && !empty($allTimes)) {

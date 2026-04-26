@@ -115,7 +115,7 @@ class SalaryController extends Controller
         $overtimeRate  = (float) ($employee->overtime_rate ?? 1.5); // معامل الأوفرتايم من بيانات الموظف
         $salaryA       = round($hoursWorked * $hourlyRate * $salaryMultiplier, 2);
         $salaryB       = round($overtimeHours * $hourlyRate * $overtimeRate * $salaryMultiplier, 2);
-        $lateDeduction = round(($lateMinutes / 60) * $hourlyRate * $request->late_factor, 2);
+        $lateDeduction = round(($lateMinutes / 60) * $hourlyRate * $request->late_factor, 0);
 
         /* ---- السلفة النشطة ---- */
         $activeLoan          = $employee->activeLoan;
@@ -248,7 +248,7 @@ class SalaryController extends Controller
         $overtimeRate     = (float) ($request->overtime_rate ?? $employee->overtime_rate ?? 1.5);
         $salaryA          = round((float)$request->hours_worked * (float)$request->hourly_rate * $salaryMultiplier, 2);
         $salaryB          = round((float)($request->overtime_hours ?? 0) * (float)$request->hourly_rate * $overtimeRate * $salaryMultiplier, 2);
-        $grossSalary      = $salaryA + $salaryB + $manualAdditions;
+        $grossSalary      = round($salaryA + $salaryB + $manualAdditions, 0);
 
         // خصومات الراتب: تأخير + غياب + يدوية + قسط السلفة
         $salaryDeductions = (float)($request->late_deduction ?? 0)
@@ -259,7 +259,7 @@ class SalaryController extends Controller
 
         $totalDeductions = $salaryDeductions;
 
-        $netSalary = max(0, $grossSalary - $salaryDeductions);
+        $netSalary = round(max(0, $grossSalary - $salaryDeductions), 0);
 
         /* ---- حفظ الـ SalaryPayment ---- */
         $paymentData = [
@@ -423,12 +423,12 @@ class SalaryController extends Controller
             $baseSalary    = (float) ($salary->salary_from_hours ?? round($salary->hours_worked * $salary->hourly_rate * ($salary->salary_multiplier ?? 1), 2));
             $overtimeSalary = (float) ($salary->salary_from_overtime ?? round(($salary->overtime_hours ?? 0) * $salary->hourly_rate * ($salary->overtime_rate ?? 1.5) * ($salary->salary_multiplier ?? 1), 2));
 
-            $grossSalary     = $baseSalary + $overtimeSalary + $newAdditions;
+            $grossSalary     = round($baseSalary + $overtimeSalary + $newAdditions, 0);
             $totalDeductions = (float) $salary->late_deduction
                              + (float) $salary->absence_deduction
                              + $newDeductions
                              + (float) $salary->loan_deduction_amount;
-            $netSalary       = max(0, $grossSalary - $totalDeductions);
+            $netSalary       = round(max(0, $grossSalary - $totalDeductions), 0);
 
             $salary->update([
                 'notes'            => $request->notes,

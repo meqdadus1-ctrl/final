@@ -46,10 +46,11 @@
                             @csrf
 
                             <div class="row g-3">
-                                <div class="col-md-6">
+                                <div class="col-md-5">
                                     <label class="form-label fw-semibold">عنوان IP الجهاز <span class="text-danger">*</span></label>
                                     <input type="text"
                                            name="ip"
+                                           id="deviceIp"
                                            class="form-control @error('ip') is-invalid @enderror"
                                            placeholder="192.168.1.201"
                                            value="{{ old('ip', '192.168.1.201') }}"
@@ -58,10 +59,11 @@
                                         <div class="invalid-feedback">{{ $message }}</div>
                                     @enderror
                                 </div>
-                                <div class="col-md-6">
+                                <div class="col-md-4">
                                     <label class="form-label fw-semibold">البورت <span class="text-danger">*</span></label>
                                     <input type="number"
                                            name="port"
+                                           id="devicePort"
                                            class="form-control @error('port') is-invalid @enderror"
                                            placeholder="4370"
                                            value="{{ old('port', '4370') }}"
@@ -71,6 +73,17 @@
                                         <div class="invalid-feedback">{{ $message }}</div>
                                     @enderror
                                     <small class="text-muted">البورت الافتراضي لـ ZKTeco هو 4370</small>
+                                </div>
+                                <div class="col-md-3 d-flex align-items-end">
+                                    {{-- زر اختبار الاتصال --}}
+                                    <form method="POST" action="{{ route('attendance.ping') }}" id="pingForm" class="w-100">
+                                        @csrf
+                                        <input type="hidden" name="ip"   id="pingIp">
+                                        <input type="hidden" name="port" id="pingPort">
+                                        <button type="button" class="btn btn-outline-info w-100" onclick="submitPing()" id="pingBtn">
+                                            <i class="fas fa-satellite-dish me-1"></i> اختبار الاتصال
+                                        </button>
+                                    </form>
                                 </div>
                             </div>
 
@@ -207,5 +220,22 @@
             btn.disabled = true;
             btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> جاري السحب...';
         });
+
+        // زر اختبار الاتصال — يأخذ IP/Port من الـ pullForm ويرسلها لـ pingForm
+        function submitPing() {
+            const ip   = document.getElementById('deviceIp').value.trim();
+            const port = document.getElementById('devicePort').value.trim();
+            if (!ip || !port) {
+                alert('يرجى إدخال IP والبورت أولاً');
+                return;
+            }
+            document.getElementById('pingIp').value   = ip;
+            document.getElementById('pingPort').value = port;
+
+            const btn = document.getElementById('pingBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> جاري الاتصال...';
+            document.getElementById('pingForm').submit();
+        }
     </script>
 </x-app-layout>

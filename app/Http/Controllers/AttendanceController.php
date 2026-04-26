@@ -533,14 +533,44 @@ PYEOF
     }
 
     /**
+     * اختبار الاتصال بجهاز البصمة (POST) — بدون سحب بيانات
+     */
+    public function pingDevice(Request $request)
+    {
+        $request->validate([
+            'ip'   => 'required|ip',
+            'port' => 'required|integer|min:1|max:65535',
+        ]);
+
+        if (!extension_loaded('sockets')) {
+            return back()->with('error', '❌ امتداد PHP Sockets (ext-sockets) غير مُفعَّل في الخادم. يرجى تفعيله في php.ini.');
+        }
+
+        try {
+            $zk      = new \Rats\Zkteco\Lib\ZKTeco($request->ip, (int) $request->port);
+            $connect = $zk->connect();
+
+            if (!$connect) {
+                return back()->with('error', '❌ فشل الاتصال بالجهاز. تأكد من: IP صحيح، البورت مفتوح (4370 UDP)، الجهاز مُشغَّل ومتصل بالشبكة.');
+            }
+
+            $deviceName = $zk->deviceName() ?: 'غير معروف';
+            $serialNum  = $zk->serialNumber() ?: 'غير معروف';
+            $time       = $zk->getTime() ?: 'غير معروف';
+            $zk->disconnect();
+
+            return back()->with('success',
+                "✅ تم الاتصال بالجهاز بنجاح! | الاسم: {$deviceName} | السيريال: {$serialNum} | وقت الجهاز: {$time}"
+            );
+        } catch (\Exception $e) {
+            \Log::error('ZKTeco ping error: ' . $e->getMessage());
+            return back()->with('error', '❌ خطأ أثناء الاتصال: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * سحب بيانات الحضور من جهاز البصمة ZKTeco (POST)
-     *
-     * المشاكل المُصلَحة:
-     * 1. تحميل ZKLib بشكل صحيح عبر require_once مع الـ vendor autoload
-     * 2. استخدام type من الجهاز (0=check_in, 1=check_out) بدل الاعتماد على الترتيب
-     * 3. حساب التأخير عند check_in أكبر من وقت الوردية
-     * 4. الجمعة = إجازة (يوم 5 = Friday)
-     * 5. معالجة حالة الموظف الغائب (absent) للأيام بدون سجل
+     * يستخدم حزمة rats/zkteco المثبتة عبر Composer (بدون require_once يدوي)
      */
     public function pullFromDevice(Request $request)
     {
@@ -551,15 +581,16 @@ PYEOF
             'date_to'   => 'required|date|after_or_equal:date_from',
         ]);
 
-        try {
-            // تحميل ZKLib مع vendor autoload بشكل صحيح
-            $zkLibPath = base_path('app/ZKLib/zklib/ZKLib.php');
-            if (!file_exists($zkLibPath)) {
-                return back()->with('error', 'مكتبة ZKLib غير موجودة في المسار المتوقع.');
-            }
-            require_once $zkLibPath;
+        // فحص امتداد الـ sockets قبل أي عملية
+        if (!extension_loaded('sockets')) {
+            return back()->with('error',
+                '❌ امتداد PHP Sockets (ext-sockets) غير مُفعَّل. افتح php.ini وفعّل السطر: extension=sockets'
+            );
+        }
 
-            $zk      = new \ZKLib($request->ip, (int) $request->port);
+        try {
+            // استخدام rats/zkteco المثبتة عبر Composer — لا تحتاج require_once
+            $zk      = new \Rats\Zkteco\Lib\ZKTeco($request->ip, (int) $request->port);
             $connect = $zk->connect();
 
             if (!$connect) {

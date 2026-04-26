@@ -90,6 +90,7 @@ Route::middleware(['auth'])->group(function () {
     Route::post('attendance/import-excel',       [AttendanceController::class, 'importExcel'])->middleware('permission:attendance.create')->name('attendance.import.excel');
     Route::get('attendance/pull-device',         [AttendanceController::class, 'pullDevicePage'])->middleware('permission:attendance.create')->name('attendance.pull.page');
     Route::post('attendance/pull-device',        [AttendanceController::class, 'pullFromDevice'])->middleware('permission:attendance.create')->name('attendance.pull');
+    Route::post('attendance/ping-device',        [AttendanceController::class, 'pingDevice'])->middleware('permission:attendance.create')->name('attendance.ping');
     Route::get('attendance',                     [AttendanceController::class, 'index'])->middleware('permission:attendance.view|attendance.view_own')->name('attendance.index');
     Route::get('attendance/create',              [AttendanceController::class, 'create'])->middleware('permission:attendance.create')->name('attendance.create');
     Route::post('attendance',                    [AttendanceController::class, 'store'])->middleware('permission:attendance.create')->name('attendance.store');

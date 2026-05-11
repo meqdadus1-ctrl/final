@@ -19,6 +19,15 @@ use App\Http\Controllers\RoleController;
 use App\Http\Controllers\LedgerImportController;
 use App\Http\Controllers\EmployeeUserController;
 use App\Http\Controllers\ReportController;
+use App\Http\Controllers\TaskController;
+use App\Http\Controllers\TaskCommentController;
+use App\Http\Controllers\CalendarController;
+use App\Http\Controllers\EventController;
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\AuditLogController;
+use App\Http\Controllers\BackupController;
+use App\Http\Controllers\PerformanceController;
+use App\Http\Controllers\MessengerSettingController;
 
 Route::get('/', function () {
     return redirect()->route('dashboard');
@@ -26,9 +35,21 @@ Route::get('/', function () {
 
 Route::middleware(['auth'])->group(function () {
 
-    Route::get('/dashboard', function () {
-        return view('dashboard');
-    })->name('dashboard');
+    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+
+    // ===== سجل التدقيق =====
+    Route::get('/audit', [AuditLogController::class, 'index'])->middleware('role:admin')->name('audit.index');
+
+    // ===== النسخ الاحتياطية =====
+    Route::prefix('backup')->name('backup.')->middleware('role:admin')->group(function () {
+        Route::get('/',         [BackupController::class, 'index'])->name('index');
+        Route::post('/run',     [BackupController::class, 'run'])->name('run');
+        Route::get('/download/{file}', [BackupController::class, 'download'])->name('download');
+        Route::delete('/{file}', [BackupController::class, 'destroy'])->name('destroy');
+    });
+
+    // ===== تصدير الرواتب =====
+    Route::get('/salary/export', [\App\Http\Controllers\SalaryController::class, 'export'])->middleware('permission:payslips.view')->name('salary.export');
 
     // ===== حساب المستخدم (Profile) =====
     Route::get('/profile',    [ProfileController::class, 'edit'])->name('profile.edit');
@@ -47,6 +68,7 @@ Route::middleware(['auth'])->group(function () {
     // ===== الموظفون (CRUD الأساسي) =====
     Route::get('employees',                      [EmployeeController::class, 'index'])->middleware('permission:employees.view')->name('employees.index');
     Route::get('employees/create',               [EmployeeController::class, 'create'])->middleware('permission:employees.create')->name('employees.create');
+    Route::get('employees/export',               [EmployeeController::class, 'export'])->middleware('permission:employees.view')->name('employees.export');
     Route::post('employees',                     [EmployeeController::class, 'store'])->middleware('permission:employees.create')->name('employees.store');
     Route::get('employees/{employee}',           [EmployeeController::class, 'show'])->middleware('permission:employees.view')->name('employees.show');
     Route::get('employees/{employee}/edit',      [EmployeeController::class, 'edit'])->middleware('permission:employees.edit')->name('employees.edit');
@@ -88,6 +110,7 @@ Route::middleware(['auth'])->group(function () {
 
     // ===== الحضور =====
     Route::post('attendance/import-excel',       [AttendanceController::class, 'importExcel'])->middleware('permission:attendance.create')->name('attendance.import.excel');
+    Route::get('attendance/export-by-employee',  [AttendanceController::class, 'exportByEmployee'])->middleware('permission:attendance.view')->name('attendance.export.employee');
     Route::get('attendance/pull-device',         [AttendanceController::class, 'pullDevicePage'])->middleware('permission:attendance.create')->name('attendance.pull.page');
     Route::post('attendance/pull-device',        [AttendanceController::class, 'pullFromDevice'])->middleware('permission:attendance.create')->name('attendance.pull');
     Route::post('attendance/ping-device',        [AttendanceController::class, 'pingDevice'])->middleware('permission:attendance.create')->name('attendance.ping');
@@ -135,6 +158,8 @@ Route::middleware(['auth'])->group(function () {
 
     // ===== كشف الحساب (Employee Ledger) =====
     Route::prefix('ledger')->name('ledger.')->middleware('permission:payslips.view')->group(function () {
+        Route::get('/',                            [\App\Http\Controllers\LedgerController::class, 'index'])->name('index');
+        Route::get('/journal',                     [\App\Http\Controllers\LedgerController::class, 'journal'])->name('journal');
         Route::get('/import',                      [LedgerImportController::class, 'showImportForm'])->name('import');
         Route::post('/import/preview',             [LedgerImportController::class, 'preview'])->name('import.preview');
         Route::post('/import/store',               [LedgerImportController::class, 'store'])->name('import.store');
@@ -144,9 +169,9 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/{employee}/payment',         [\App\Http\Controllers\LedgerController::class, 'recordPayment'])->name('payment');
 
         // ===== إدارة القيود المحاسبية =====
-        Route::post('/{employee}/entry',           [\App\Http\Controllers\LedgerController::class, 'storeEntry'])->name('entry.store');
-        Route::put('/entry/{entry}',               [\App\Http\Controllers\LedgerController::class, 'updateEntry'])->name('entry.update');
-        Route::delete('/entry/{entry}',            [\App\Http\Controllers\LedgerController::class, 'destroyEntry'])->name('entry.destroy');
+        Route::post('/{employee}/entry',           [\App\Http\Controllers\LedgerController::class, 'storeEntry'])->middleware('permission:payslips.edit')->name('entry.store');
+        Route::put('/entry/{entry}',               [\App\Http\Controllers\LedgerController::class, 'updateEntry'])->middleware('permission:payslips.edit')->name('entry.update');
+        Route::delete('/entry/{entry}',            [\App\Http\Controllers\LedgerController::class, 'destroyEntry'])->middleware('permission:payslips.delete')->name('entry.destroy');
     });
 
     // ===== الإجازات =====
@@ -167,6 +192,7 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/',          [ReportController::class, 'index'])->name('index');
         Route::get('/generate',  [ReportController::class, 'generate'])->name('generate');
         Route::get('/pdf',       [ReportController::class, 'pdf'])->name('pdf');
+        Route::get('/excel',     [ReportController::class, 'exportExcel'])->name('excel');
     });
 
     // ===== التوظيف =====
@@ -179,7 +205,14 @@ Route::middleware(['auth'])->group(function () {
 
     // ===== بوابة الموظف (Employee Portal) =====
     Route::prefix('portal')->name('portal.')->middleware('employee.portal')->group(function () {
-        Route::get('/', [EmployeePortalController::class, 'index'])->name('index');
+        Route::get('/',                  [EmployeePortalController::class, 'index'])->name('index');
+        Route::get('/payslips',          [EmployeePortalController::class, 'payslips'])->name('payslips');
+        Route::get('/leaves',            [EmployeePortalController::class, 'leaves'])->name('leaves');
+        Route::post('/leaves',           [EmployeePortalController::class, 'storeLeave'])->name('leaves.store');
+        Route::get('/loans',             [EmployeePortalController::class, 'loans'])->name('loans');
+        Route::post('/loans',            [EmployeePortalController::class, 'storeLoan'])->name('loans.store');
+        Route::get('/attendance',        [EmployeePortalController::class, 'attendance'])->name('attendance');
+        Route::get('/tasks',             [EmployeePortalController::class, 'tasks'])->name('tasks');
     });
 
     // ===== محادثات الموظفين =====
@@ -190,6 +223,16 @@ Route::middleware(['auth'])->group(function () {
         Route::delete('/message/{chat}',        [\App\Http\Controllers\AdminChatController::class, 'destroy'])->name('destroy');
         Route::get('/{employee}/poll',          [\App\Http\Controllers\AdminChatController::class, 'poll'])->name('poll');
         Route::get('/list/poll',                [\App\Http\Controllers\AdminChatController::class, 'pollList'])->name('poll.list');
+    });
+
+    // ===== قنوات الأقسام =====
+    Route::prefix('channels')->name('channels.')->middleware('role:admin|manager')->group(function () {
+        Route::get('/',                              [\App\Http\Controllers\DepartmentChannelController::class, 'index'])->name('index');
+        Route::get('/list/poll',                     [\App\Http\Controllers\DepartmentChannelController::class, 'pollList'])->name('poll.list');
+        Route::get('/{department}',                  [\App\Http\Controllers\DepartmentChannelController::class, 'show'])->name('show');
+        Route::post('/{department}/send',            [\App\Http\Controllers\DepartmentChannelController::class, 'send'])->name('send');
+        Route::delete('/message/{message}',          [\App\Http\Controllers\DepartmentChannelController::class, 'destroy'])->name('destroy');
+        Route::get('/{department}/poll',             [\App\Http\Controllers\DepartmentChannelController::class, 'poll'])->name('poll');
     });
 
     // ===== لوحة تحكم الموبايل =====
@@ -210,6 +253,42 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/salary/{salary}/approve-statement',  [\App\Http\Controllers\MobileAdminController::class, 'approveStatement'])->name('salary.statement');
     });
 
+    // ===== المهام =====
+    Route::get('tasks/kanban',                        [TaskController::class, 'kanban'])->middleware('permission:tasks.view')->name('tasks.kanban');
+    Route::get('tasks/report',                        [TaskController::class, 'report'])->middleware('permission:tasks.view')->name('tasks.report');
+    Route::get('tasks',                               [TaskController::class, 'index'])->middleware('permission:tasks.view')->name('tasks.index');
+    Route::get('tasks/create',                        [TaskController::class, 'create'])->middleware('permission:tasks.create')->name('tasks.create');
+    Route::post('tasks',                              [TaskController::class, 'store'])->middleware('permission:tasks.create')->name('tasks.store');
+    Route::get('tasks/{task}',                        [TaskController::class, 'show'])->middleware('permission:tasks.view')->name('tasks.show');
+    Route::get('tasks/{task}/edit',                   [TaskController::class, 'edit'])->middleware('permission:tasks.edit')->name('tasks.edit');
+    Route::put('tasks/{task}',                        [TaskController::class, 'update'])->middleware('permission:tasks.edit')->name('tasks.update');
+    Route::delete('tasks/{task}',                     [TaskController::class, 'destroy'])->middleware('permission:tasks.delete')->name('tasks.destroy');
+    Route::patch('tasks/{task}/status',               [TaskController::class, 'updateStatus'])->middleware('permission:tasks.edit')->name('tasks.status');
+    Route::patch('tasks/{task}/due-date',             [TaskController::class, 'updateDueDate'])->middleware('permission:tasks.edit')->name('tasks.due-date');
+
+    // ===== تعليقات المهام =====
+    Route::post('tasks/{task}/comments',              [TaskCommentController::class, 'store'])->middleware('permission:tasks.view')->name('tasks.comments.store');
+    Route::delete('tasks/{task}/comments/{comment}',  [TaskCommentController::class, 'destroy'])->middleware('permission:tasks.view')->name('tasks.comments.destroy');
+
+    // ===== التقويم =====
+    Route::get('calendar',                            [CalendarController::class, 'index'])->middleware('permission:tasks.view')->name('calendar.index');
+    Route::get('calendar/feed',                       [CalendarController::class, 'feed'])->middleware('permission:tasks.view')->name('calendar.feed');
+
+    // ===== الأحداث =====
+    Route::get('events/create',                       [EventController::class, 'create'])->middleware('permission:tasks.create')->name('events.create');
+    Route::post('events',                             [EventController::class, 'store'])->middleware('permission:tasks.create')->name('events.store');
+    Route::get('events/{event}/edit',                 [EventController::class, 'edit'])->middleware('permission:tasks.edit')->name('events.edit');
+    Route::put('events/{event}',                      [EventController::class, 'update'])->middleware('permission:tasks.edit')->name('events.update');
+    Route::delete('events/{event}',                   [EventController::class, 'destroy'])->middleware('permission:tasks.delete')->name('events.destroy');
+    Route::patch('events/{event}/dates',              [EventController::class, 'updateDates'])->middleware('permission:tasks.edit')->name('events.dates');
+
+    // ===== إعدادات الرسائل - Admin فقط =====
+    Route::prefix('settings')->name('settings.')->middleware('role:admin')->group(function () {
+        Route::get('/messenger',        [MessengerSettingController::class, 'index'])->name('messenger');
+        Route::put('/messenger',        [MessengerSettingController::class, 'update'])->name('messenger.update');
+        Route::post('/messenger/test',  [MessengerSettingController::class, 'test'])->name('messenger.test');
+    });
+
     // ===== الأدوار والصلاحيات - Admin فقط =====
     Route::prefix('roles')->name('roles.')->middleware('role:admin')->group(function () {
         Route::get('/',                [RoleController::class, 'index'])->name('index');
@@ -220,6 +299,10 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/users/create',   [RoleController::class, 'createUser'])->name('users.create');
         Route::delete('/users/{user}', [RoleController::class, 'deleteUser'])->name('users.delete');
     });
+
+    // ===== تقييم الأداء =====
+    Route::get('performance/export',           [PerformanceController::class, 'export'])->name('performance.export');
+    Route::resource('performance',              PerformanceController::class);
 
 });
 

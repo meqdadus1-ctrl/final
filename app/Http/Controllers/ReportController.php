@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exports\ExcelExport;
 use App\Models\Attendance;
 use App\Models\Department;
 use App\Models\Employee;
@@ -80,6 +81,69 @@ class ReportController extends Controller
     }
 
     /* =====================================================
+     *  تصدير Excel
+     * ===================================================== */
+    public function exportExcel(Request $request)
+    {
+        $request->validate([
+            'employees'   => 'required|array|min:1',
+            'employees.*' => 'integer|exists:employees,id',
+            'from'        => 'required|date',
+            'to'          => 'required|date|after_or_equal:from',
+        ]);
+
+        $from     = $request->from;
+        $to       = $request->to;
+        $sections = $request->sections ?? ['attendance', 'salary', 'loans', 'leaves'];
+
+        $data = $this->buildReportData($request->employees, $from, $to, $sections);
+
+        $headers = [
+            'الموظف', 'القسم', 'المسمى الوظيفي',
+            'أيام الحضور', 'أيام الغياب', 'أيام الإجازة',
+            'إجمالي الساعات', 'ساعات إضافية', 'مرات التأخر', 'دقائق التأخر',
+            'إجمالي الراتب (₪)', 'إجمالي الخصومات (₪)', 'الصافي (₪)',
+            'خصم تأخير (₪)', 'خصم سلفة (₪)',
+            'إجمالي السلف (₪)', 'المدفوع من السلف (₪)', 'المتبقي من السلف (₪)',
+            'أيام الإجازة المعتمدة',
+            'الرصيد الحالي (₪)',
+        ];
+
+        $rows = collect($data)->map(function ($emp) {
+            $att   = $emp['attendance'] ?? null;
+            $sal   = $emp['salary']     ?? null;
+            $loans = $emp['loans']      ?? null;
+            $leaves = $emp['leaves']    ?? null;
+
+            return [
+                $emp['employee']->name,
+                $emp['employee']->department->name ?? '—',
+                $emp['employee']->job_title ?? '—',
+                $att['present_days']      ?? '—',
+                $att['absent_days']       ?? '—',
+                $att['leave_days']        ?? '—',
+                $att['total_hours']       ?? '—',
+                $att['overtime_hours']    ?? '—',
+                $att['late_count']        ?? '—',
+                $att['total_late_minutes'] ?? '—',
+                $sal['total_gross']        ?? '—',
+                $sal['total_deductions']   ?? '—',
+                $sal['total_net']          ?? '—',
+                $sal['total_late_ded']     ?? '—',
+                $sal['total_loan_ded']     ?? '—',
+                $loans['total_borrowed']   ?? '—',
+                $loans['total_paid']       ?? '—',
+                $loans['total_remaining']  ?? '—',
+                $leaves['total_days']      ?? '—',
+                $emp['ledger_balance'],
+            ];
+        });
+
+        $filename = 'تقرير_الموظفين_' . $from . '_' . $to . '.xlsx';
+        return ExcelExport::download($filename, $headers, $rows);
+    }
+
+    /* =====================================================
      *  بناء بيانات التقرير لكل الموظفين
      * ===================================================== */
     private function buildReportData(array $ids, string $from, string $to, array $sections): array
@@ -101,18 +165,27 @@ class ReportController extends Controller
                     ->orderBy('date')
                     ->get();
 
+                $lateRecords = $att->filter(function ($a) use ($employee) {
+                    if ($a->status !== 'present' || !$a->check_in) return false;
+                    $shift = $employee->shift_start ?? '08:00:00';
+                    return Carbon::parse($a->check_in)->format('H:i:s') > $shift;
+                });
+
+                $totalLateMinutes = $lateRecords->sum(function ($a) use ($employee) {
+                    $checkin  = Carbon::parse($a->check_in);
+                    $shift    = Carbon::parse($checkin->format('Y-m-d') . ' ' . ($employee->shift_start ?? '08:00:00'));
+                    return max(0, $checkin->diffInMinutes($shift, false) * -1);
+                });
+
                 $emp['attendance'] = [
-                    'records'        => $att,
-                    'present_days'   => $att->where('status','present')->count(),
-                    'absent_days'    => $att->where('status','absent')->count(),
-                    'leave_days'     => $att->whereIn('status',['leave','on_leave'])->count(),
-                    'total_hours'    => round($att->sum('work_hours'), 2),
-                    'overtime_hours' => round($att->sum('overtime_hours'), 2),
-                    'late_count'     => $att->filter(function ($a) use ($employee) {
-                        if ($a->status !== 'present' || !$a->check_in) return false;
-                        $shift = $employee->shift_start ?? '08:00:00';
-                        return Carbon::parse($a->check_in)->format('H:i:s') > $shift;
-                    })->count(),
+                    'records'             => $att,
+                    'present_days'        => $att->where('status','present')->count(),
+                    'absent_days'         => $att->where('status','absent')->count(),
+                    'leave_days'          => $att->whereIn('status',['leave','on_leave'])->count(),
+                    'total_hours'         => round($att->sum('work_hours'), 2),
+                    'overtime_hours'      => round($att->sum('overtime_hours'), 2),
+                    'late_count'          => $lateRecords->count(),
+                    'total_late_minutes'  => (int) $totalLateMinutes,
                 ];
             }
 

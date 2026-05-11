@@ -178,12 +178,11 @@
                             <input type="text" name="notes" class="form-control form-control-sm"
                                 placeholder="اختياري — مثال: راتب أسبوع W17">
                         </div>
-                        <button type="submit" class="btn btn-success btn-sm w-100"
-                            {{ $balance <= 0 ? 'disabled' : '' }}>
+                        <button type="submit" class="btn btn-success btn-sm w-100">
                             <i class="fas fa-check me-1"></i>تسجيل القبض
                         </button>
-                        @if($balance <= 0)
-                        <div class="small text-muted text-center mt-1">الرصيد صفر — لا يمكن الصرف</div>
+                        @if($balance < 0)
+                        <div class="small text-danger text-center mt-1">تنبيه: الرصيد سالب — سيزيد الدين</div>
                         @endif
                     </form>
                 </div>
@@ -417,6 +416,22 @@
                                 </tr>
                             </thead>
                             <tbody>
+                                @if($periodOpeningBalance != 0 || ($from && $entries->isNotEmpty()))
+                                <tr class="table-secondary">
+                                    <td class="px-2 text-muted small">—</td>
+                                    <td class="px-2 text-muted">{{ \Carbon\Carbon::parse($from)->format('d/m/Y') }}</td>
+                                    <td colspan="2">
+                                        <span class="badge bg-secondary me-1">رصيد أول المدة</span>
+                                        الرصيد قبل بداية الفترة المعروضة
+                                    </td>
+                                    <td class="text-end text-muted">—</td>
+                                    <td class="text-end text-muted">—</td>
+                                    <td class="text-end fw-bold {{ $periodOpeningBalance >= 0 ? 'text-success' : 'text-danger' }}">
+                                        {{ number_format($periodOpeningBalance, 2) }} ₪
+                                    </td>
+                                    <td></td>
+                                </tr>
+                                @endif
                                 @php
                                     $typeLabels = [
                                         'salary'            => ['label'=>'راتب ساعات',    'color'=>'bg-primary'],
@@ -435,13 +450,24 @@
                                     ];
                                 @endphp
                                 @foreach($entries as $entry)
-                                @php $t = $typeLabels[$entry->entry_type] ?? ['label'=>$entry->entry_type,'color'=>'bg-secondary']; @endphp
+                                @php
+                                    $t = $typeLabels[$entry->entry_type] ?? ['label'=>$entry->entry_type,'color'=>'bg-secondary'];
+                                    $badDate = $entry->entry_date && $entry->entry_date->year < 2000;
+                                @endphp
                                 <tr class="{{ $entry->credit > 0 ? 'table-success bg-opacity-25' : 'table-danger bg-opacity-10' }}">
                                     <td class="px-2 text-muted small">{{ $entry->id }}</td>
-                                    <td class="px-2 text-muted">{{ $entry->entry_date?->format('d/m/Y') }}</td>
+                                    <td class="px-2 {{ $badDate ? 'text-danger fw-semibold' : 'text-muted' }}">
+                                        {{ $entry->entry_date?->format('d/m/Y') }}
+                                        @if($badDate)
+                                            <i class="fas fa-exclamation-triangle text-danger ms-1" title="تاريخ غير صحيح — استورد من Excel بتاريخ فارغ"></i>
+                                        @endif
+                                    </td>
                                     <td>
                                         <span class="badge {{ $t['color'] }} me-1">{{ $t['label'] }}</span>
                                         {{ $entry->description }}
+                                        @if($entry->reference_type === 'ExcelImport')
+                                            <span class="badge bg-info text-dark ms-1" style="font-size:0.65rem">Excel</span>
+                                        @endif
                                     </td>
                                     <td class="text-center text-muted">
                                         {{ $entry->fiscal_period ?? '—' }}
@@ -461,8 +487,11 @@
                                                 title="تعديل" data-bs-toggle="modal" data-bs-target="#editEntryModal{{ $entry->id }}">
                                                 <i class="fas fa-edit" style="font-size:0.7rem"></i>
                                             </button>
+                                            @php
+                                                $deleteConfirm = 'حذف القيد #' . $entry->id . '؟ سيتم إعادة حساب الأرصدة.';
+                                            @endphp
                                             <form action="{{ route('ledger.entry.destroy', $entry) }}" method="POST" class="d-inline"
-                                                onsubmit="return confirm('حذف القيد #{{ $entry->id }}؟ سيتم إعادة حساب الأرصدة.')">
+                                                onsubmit="return confirm('{{ $deleteConfirm }}')">
                                                 @csrf @method('DELETE')
                                                 <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-1" title="حذف">
                                                     <i class="fas fa-trash" style="font-size:0.7rem"></i>

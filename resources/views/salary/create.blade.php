@@ -70,29 +70,6 @@
 
                         <hr>
 
-                        {{-- إعدادات التأخير --}}
-                        <h6 class="fw-semibold text-secondary mb-3">⚙️ إعدادات التأخير</h6>
-                        <div class="row mb-4">
-                            <div class="col-md-6">
-                                <label class="form-label fw-semibold">مهلة التسامح <small class="text-muted fw-normal">(دقائق)</small></label>
-                                <input type="number" name="late_grace" class="form-control"
-                                    value="{{ old('late_grace', 5) }}" min="0" max="60">
-                                <div class="form-text">التأخير أقل من هذا لا يُحسب</div>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label fw-semibold">معامل التأخير</label>
-                                <select name="late_factor" class="form-select">
-                                    <option value="0"  {{ old('late_factor') == '0'   ? 'selected' : '' }}>× 0 (بدون خصم)</option>
-                                    <option value="1"  {{ old('late_factor', '1') == '1' ? 'selected' : '' }}>× 1.0 (عادي)</option>
-                                    <option value="1.5"{{ old('late_factor') == '1.5' ? 'selected' : '' }}>× 1.5</option>
-                                    <option value="2"  {{ old('late_factor') == '2'   ? 'selected' : '' }}>× 2.0 (مضاعف)</option>
-                                </select>
-                                <div class="form-text">مضاعف خصم دقيقة التأخير من الراتب</div>
-                            </div>
-                        </div>
-
-                        <hr>
-
                         {{-- معامل الراتب --}}
                         <h6 class="fw-semibold text-secondary mb-3">💰 معامل الراتب (لهذه الدفعة)</h6>
                         <div class="row mb-4">

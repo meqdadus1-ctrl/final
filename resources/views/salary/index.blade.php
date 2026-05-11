@@ -15,6 +15,9 @@
             <a href="{{ route('ledger.import') }}" class="btn btn-outline-success btn-sm">
                 <i class="fas fa-file-import me-1"></i> استيراد Excel
             </a>
+            <a href="{{ route('salary.export', request()->query()) }}" class="btn btn-success btn-sm">
+                <i class="fas fa-file-excel me-1"></i> تصدير Excel
+            </a>
             <a href="{{ route('salary.create') }}" class="btn btn-primary btn-sm">
                 <i class="fas fa-plus me-1"></i> احتساب راتب
             </a>

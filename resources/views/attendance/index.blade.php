@@ -93,9 +93,13 @@
     <div class="card mb-4">
         <div class="card-body">
             <form method="GET" action="{{ route('attendance.index') }}" class="row g-3 align-items-end">
-                <div class="col-md-3">
-                    <label class="form-label">التاريخ</label>
-                    <input type="date" name="date" class="form-control" value="{{ request('date') }}">
+                <div class="col-md-2">
+                    <label class="form-label">من تاريخ</label>
+                    <input type="date" name="date_from" class="form-control" value="{{ request('date_from') }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">إلى تاريخ</label>
+                    <input type="date" name="date_to" class="form-control" value="{{ request('date_to') }}">
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">الموظف</label>
@@ -108,7 +112,7 @@
                         @endforeach
                     </select>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <label class="form-label">الحالة</label>
                     <select name="status" class="form-select">
                         <option value="">-- كل الحالات --</option>
@@ -135,9 +139,15 @@
     <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
             <span><i class="fas fa-clock me-2"></i> سجلات الحضور والانصراف</span>
-            <a href="{{ route('attendance.create') }}" class="btn btn-primary btn-sm">
-                <i class="fas fa-plus me-1"></i> إضافة يدوية
-            </a>
+            <div class="d-flex gap-2">
+                <a href="{{ route('attendance.export.employee', request()->query()) }}"
+                   class="btn btn-success btn-sm">
+                    <i class="fas fa-file-excel me-1"></i> تصدير Excel حسب الموظف
+                </a>
+                <a href="{{ route('attendance.create') }}" class="btn btn-primary btn-sm">
+                    <i class="fas fa-plus me-1"></i> إضافة يدوية
+                </a>
+            </div>
         </div>
         <div class="card-body p-0">
             <table class="table table-hover mb-0">
@@ -149,6 +159,7 @@
                         <th>وقت الخروج</th>
                         <th>ساعات العمل</th>
                         <th>أوفرتايم</th>
+                        <th>تأخير</th>
                         <th>الحالة</th>
                         <th>المصدر</th>
                         <th>إجراءات</th>
@@ -165,6 +176,13 @@
                         <td>
                             @if($rec->overtime_hours > 0)
                                 <span class="badge bg-warning text-dark">{{ $rec->overtime_hours }} س</span>
+                            @else
+                                —
+                            @endif
+                        </td>
+                        <td>
+                            @if($rec->late_minutes > 0)
+                                <span class="badge bg-danger">{{ $rec->late_minutes }} د</span>
                             @else
                                 —
                             @endif

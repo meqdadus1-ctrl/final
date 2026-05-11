@@ -9,6 +9,7 @@ use App\Models\LeaveRequest;
 use App\Models\LeaveType;
 use App\Models\Loan;
 use App\Models\Attendance;
+use App\Models\Task;
 use App\Services\LedgerService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -168,6 +169,23 @@ class EmployeePortalController extends Controller
         ]);
 
         return back()->with('success', 'تم تقديم طلب السلفة بنجاح، سيتم مراجعته قريباً ✅');
+    }
+
+    /* =====================================================
+     *  TASKS – /portal/tasks
+     * ===================================================== */
+    public function tasks(Request $request)
+    {
+        $user = Auth::user();
+
+        $tasks = Task::with(['department', 'comments'])
+            ->withCount('comments')
+            ->whereHas('users', fn($q) => $q->where('users.id', $user->id))
+            ->whereNull('parent_id')
+            ->orderByDesc('created_at')
+            ->paginate(15);
+
+        return view('portal.tasks', compact('tasks'));
     }
 
     /* =====================================================

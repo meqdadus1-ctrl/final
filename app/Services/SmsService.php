@@ -2,27 +2,54 @@
 
 namespace App\Services;
 
+use App\Models\MessengerSetting;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class SmsService
 {
-    private string $basicAuth = 'QTc3REZGMUFFRDYwNEE5NkE5NDc3RTQ5OTdFMDM0RDMtZm94Oipod2pjZ0tUQWkxcG1YYW9UeU5PMHl5MnhaMlE=';
-    private string $apiUrl    = 'https://api.bulksms.com/v1/messages';
+    private ?MessengerSetting $settings = null;
+
+    private function getSettings(): MessengerSetting
+    {
+        return $this->settings ??= MessengerSetting::getInstance();
+    }
 
     /**
-     * إرسال SMS
+     * إرسال رسالة (SMS أو WhatsApp حسب الإعداد)
      */
     public function send(string $phone, string $message): bool
     {
-        try {
-            // تنظيف رقم الهاتف وإضافة كود فلسطين
-            $phone = $this->formatPhone($phone);
+        $cfg = $this->getSettings();
 
+        if (!$cfg->is_active) {
+            Log::info('SmsService: الإرسال معطّل من الإعدادات');
+            return false;
+        }
+
+        $phone = $this->formatPhone($phone, $cfg->country_code ?? '970');
+
+        return match ($cfg->driver) {
+            'whatsapp_cloud' => $this->sendWhatsApp($phone, $message, $cfg),
+            default          => $this->sendBulkSms($phone, $message, $cfg),
+        };
+    }
+
+    /**
+     * إرسال عبر SMS API (BulkSMS وما شابه)
+     */
+    private function sendBulkSms(string $phone, string $message, MessengerSetting $cfg): bool
+    {
+        if (!$cfg->sms_api_url || !$cfg->sms_api_auth) {
+            Log::warning('SmsService: بيانات SMS API غير مكتملة');
+            return false;
+        }
+
+        try {
             $response = Http::withHeaders([
-                'Authorization' => 'Basic ' . $this->basicAuth,
+                'Authorization' => 'Basic ' . $cfg->sms_api_auth,
                 'Content-Type'  => 'application/json',
-            ])->post($this->apiUrl, [
+            ])->post($cfg->sms_api_url, [
                 'to'   => $phone,
                 'body' => $message,
             ]);
@@ -47,30 +74,74 @@ class SmsService
     }
 
     /**
-     * إرسال SMS تأكيد الراتب
+     * إرسال عبر WhatsApp Cloud API (Meta)
      */
-    public function sendSalaryNotification(string $phone, string $employeeName, float $amount, string $bankAccount): bool
+    private function sendWhatsApp(string $phone, string $message, MessengerSetting $cfg): bool
     {
-        $message = "تم ايداع الراتب {$amount} شيكل الى حسابك ({$bankAccount})";
-        return $this->send($phone, $message);
+        if (!$cfg->wa_phone_number_id || !$cfg->wa_access_token) {
+            Log::warning('SmsService: بيانات WhatsApp غير مكتملة');
+            return false;
+        }
+
+        $url = "https://graph.facebook.com/v19.0/{$cfg->wa_phone_number_id}/messages";
+
+        // WhatsApp يتوقع الرقم بدون +
+        $phone = ltrim($phone, '+');
+
+        try {
+            $response = Http::withToken($cfg->wa_access_token)
+                ->post($url, [
+                    'messaging_product' => 'whatsapp',
+                    'to'                => $phone,
+                    'type'              => 'text',
+                    'text'              => ['body' => $message],
+                ]);
+
+            if ($response->successful()) {
+                Log::info("WhatsApp sent to {$phone}");
+                return true;
+            }
+
+            Log::warning('WhatsApp failed', [
+                'phone'    => $phone,
+                'status'   => $response->status(),
+                'response' => $response->json(),
+            ]);
+
+            return false;
+
+        } catch (\Exception $e) {
+            Log::error('WhatsApp exception: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * بناء رسالة الراتب من القالب المحفوظ
+     */
+    public function buildSalaryMessage(string $employeeName, int $amount, string $period, string $bankAccount = ''): string
+    {
+        $template = $this->getSettings()->salary_template
+            ?? 'تم احتساب راتبك عن الفترة {period} بمبلغ {amount} ₪';
+
+        return str_replace(
+            ['{name}',        '{amount}', '{period}', '{account}'],
+            [$employeeName,   $amount,    $period,    $bankAccount],
+            $template
+        );
     }
 
     /**
      * تنسيق رقم الهاتف
      */
-    private function formatPhone(string $phone): string
+    private function formatPhone(string $phone, string $countryCode = '970'): string
     {
-        // حذف كل شي غير أرقام
         $phone = preg_replace('/[^0-9]/', '', $phone);
 
-        // إذا يبدأ بـ 0 → استبدلها بـ 970 (فلسطين)
         if (str_starts_with($phone, '0')) {
-            $phone = '970' . substr($phone, 1);
-        }
-
-        // إذا ما فيه كود دولة
-        if (strlen($phone) <= 9) {
-            $phone = '970' . $phone;
+            $phone = $countryCode . substr($phone, 1);
+        } elseif (strlen($phone) <= 9) {
+            $phone = $countryCode . $phone;
         }
 
         return '+' . $phone;

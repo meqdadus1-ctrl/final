@@ -146,6 +146,7 @@ class LedgerService
 
             // 3. التعديلات اليدوية (Adjustments)
             $adjDeductionTotal = 0;
+            $adjAdditionTotal  = 0;
             if (!empty($adjustmentIds)) {
                 $adjustments = SalaryAdjustment::whereIn('id', $adjustmentIds)
                     ->where('employee_id', $emp->id)
@@ -154,7 +155,9 @@ class LedgerService
 
                 foreach ($adjustments as $adj) {
                     $isAddition = $adj->is_addition;
-                    if (!$isAddition) {
+                    if ($isAddition) {
+                        $adjAdditionTotal += (float)$adj->amount;
+                    } else {
                         $adjDeductionTotal += (float)$adj->amount;
                     }
                     $this->addEntry(
@@ -175,6 +178,16 @@ class LedgerService
                         'salary_payment_id'  => $payment->id,
                     ]);
                 }
+            }
+
+            // 3.5. إضافات يدوية مباشرة من فورم المراجعة (غير مرتبطة بـ adjustment)
+            $formManualAdditions = max(0, (float)$payment->manual_additions - $adjAdditionTotal);
+            if ($formManualAdditions > 0) {
+                $this->addEntry(
+                    $emp->id, 'bonus', $formManualAdditions, 0,
+                    "إضافة يدوية",
+                    $paymentDate, $periodOpts
+                );
             }
 
             // 4. خصم التأخير
@@ -253,21 +266,34 @@ class LedgerService
      * ===================================================== */
     public function recalculateBalances(int $employeeId): void
     {
-        $entries = EmployeeLedger::where('employee_id', $employeeId)
-            ->orderBy('entry_date')
-            ->orderBy('id')
-            ->get();
+        // تعطيل Audit Observer أثناء التحديث الجماعي للأرصدة
+        \App\Observers\AuditObserver::$paused = true;
 
-        $balance = 0;
-        $firstEntry = $entries->first();
-        if ($firstEntry && $firstEntry->entry_type !== 'opening_balance') {
-            $employee = Employee::find($employeeId);
-            $balance = $employee ? (float) $employee->opening_balance : 0;
-        }
+        try {
+            DB::transaction(function () use ($employeeId) {
+                $entries = EmployeeLedger::where('employee_id', $employeeId)
+                    ->orderBy('entry_date')
+                    ->orderBy('id')
+                    ->get();
 
-        foreach ($entries as $entry) {
-            $balance = round($balance + $entry->credit - $entry->debit, 2);
-            $entry->update(['balance_after' => $balance]);
+                // Use the employee->opening_balance column ONLY when no opening_balance ledger
+                // entry exists. Checking the first-entry position was wrong: if the
+                // opening_balance entry has a later date (e.g. today) it wouldn't be first,
+                // so the column value AND the entry credit were both summed → double-count.
+                $hasOpeningEntry = $entries->contains('entry_type', 'opening_balance');
+                $balance = 0.0;
+                if (!$hasOpeningEntry) {
+                    $employee = Employee::find($employeeId);
+                    $balance = $employee ? (float) $employee->opening_balance : 0.0;
+                }
+
+                foreach ($entries as $entry) {
+                    $balance = round($balance + $entry->credit - $entry->debit, 2);
+                    $entry->update(['balance_after' => $balance]);
+                }
+            });
+        } finally {
+            \App\Observers\AuditObserver::$paused = false;
         }
     }
 
@@ -376,7 +402,14 @@ class LedgerService
 
             // مفاتيح إضافية للتقارير
             'net'              => $totalCredits - $totalDebits,
-            'current_balance'  => $this->getCurrentBalance($employeeId),
+            // When a period filter is active return the balance at end-of-period, not
+            // today's overall balance — otherwise the summary is misleading.
+            'current_balance'  => $to
+                ? (float)(EmployeeLedger::where('employee_id', $employeeId)
+                    ->where('entry_date', '<=', $to)
+                    ->orderByDesc('entry_date')->orderByDesc('id')
+                    ->value('balance_after') ?? 0.0)
+                : $this->getCurrentBalance($employeeId),
             'salary_total'     => (float) $entries->where('entry_type', 'salary')->sum('credit'),
             'overtime_total'   => (float) $entries->where('entry_type', 'overtime')->sum('credit'),
             'bonus_total'      => (float) $entries->where('entry_type', 'bonus')->sum('credit'),

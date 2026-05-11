@@ -17,8 +17,13 @@ class AttendanceController extends Controller
     {
         $query = Attendance::with('employee');
 
-        // فلتر بالتاريخ
-        if ($request->date) {
+        if ($request->filled('date_from')) {
+            $query->whereDate('date', '>=', $request->date_from);
+        }
+        if ($request->filled('date_to')) {
+            $query->whereDate('date', '<=', $request->date_to);
+        }
+        if ($request->filled('date')) {
             $query->whereDate('date', $request->date);
         }
 
@@ -56,24 +61,31 @@ class AttendanceController extends Controller
             'status'      => 'required|in:present,absent,late,leave,holiday',
         ]);
 
+        // إذا يوجد سجل لهذا الموظف في نفس اليوم → وجّهه لصفحة التعديل مباشرة
+        $existing = Attendance::where('employee_id', $request->employee_id)
+            ->whereDate('date', $request->date)
+            ->first();
+
+        if ($existing) {
+            return redirect()->route('attendance.edit', $existing)
+                ->with('info', 'يوجد سجل حضور لهذا الموظف في هذا التاريخ — يمكنك تعديله من هنا.');
+        }
+
         // حساب ساعات العمل تلقائياً
         $workHours     = 0;
         $overtimeHours = 0;
+        $lateMinutes   = 0;
         $employee      = Employee::find($request->employee_id);
 
         if ($request->check_in && $request->check_out) {
-            $in  = strtotime($request->check_in);
-            $out = strtotime($request->check_out);
-            $workHours = round(($out - $in) / 3600, 2);
+            [$workHours, $overtimeHours] = $this->calcWorkStats(
+                $request->date, $request->check_in, $request->check_out,
+                $employee?->shift_start, $employee?->shift_end
+            );
+        }
 
-            // الأوفرتايم: من مدة الوردية الفعلية وليس 8 ساعات ثابتة
-            $shiftHours = 8.0;
-            if ($employee && $employee->shift_start && $employee->shift_end) {
-                $shiftStart = strtotime($employee->shift_start);
-                $shiftEnd   = strtotime($employee->shift_end);
-                $shiftHours = max(1, round(($shiftEnd - $shiftStart) / 3600, 2));
-            }
-            $overtimeHours = $workHours > $shiftHours ? round($workHours - $shiftHours, 2) : 0;
+        if ($request->check_in && $employee) {
+            $lateMinutes = $this->calcLateMinutes($request->date, $request->check_in, $employee->shift_start);
         }
 
         Attendance::create([
@@ -83,6 +95,7 @@ class AttendanceController extends Controller
             'check_out'      => $request->check_out,
             'work_hours'     => $workHours,
             'overtime_hours' => $overtimeHours,
+            'late_minutes'   => $lateMinutes,
             'status'         => $request->status,
             'leave_approved' => $request->leave_approved ? 1 : 0,
             'leave_reason'   => $request->leave_reason,
@@ -121,21 +134,18 @@ class AttendanceController extends Controller
 
         $workHours     = 0;
         $overtimeHours = 0;
+        $lateMinutes   = 0;
         $employee      = Employee::find($request->employee_id);
 
         if ($request->check_in && $request->check_out) {
-            $in  = strtotime($request->check_in);
-            $out = strtotime($request->check_out);
-            $workHours = round(($out - $in) / 3600, 2);
+            [$workHours, $overtimeHours] = $this->calcWorkStats(
+                $request->date, $request->check_in, $request->check_out,
+                $employee?->shift_start, $employee?->shift_end
+            );
+        }
 
-            // الأوفرتايم: من مدة الوردية الفعلية وليس 8 ساعات ثابتة
-            $shiftHours = 8.0;
-            if ($employee && $employee->shift_start && $employee->shift_end) {
-                $shiftStart = strtotime($employee->shift_start);
-                $shiftEnd   = strtotime($employee->shift_end);
-                $shiftHours = max(1, round(($shiftEnd - $shiftStart) / 3600, 2));
-            }
-            $overtimeHours = $workHours > $shiftHours ? round($workHours - $shiftHours, 2) : 0;
+        if ($request->check_in && $employee) {
+            $lateMinutes = $this->calcLateMinutes($request->date, $request->check_in, $employee->shift_start);
         }
 
         $attendance->update([
@@ -145,6 +155,7 @@ class AttendanceController extends Controller
             'check_out'      => $request->check_out,
             'work_hours'     => $workHours,
             'overtime_hours' => $overtimeHours,
+            'late_minutes'   => $lateMinutes,
             'status'         => $request->status,
             'leave_approved' => $request->leave_approved ? 1 : 0,
             'leave_reason'   => $request->leave_reason,
@@ -466,32 +477,20 @@ PYEOF
                     // حساب ساعات العمل
                     $workHours     = 0;
                     $overtimeHours = 0;
+                    $lateMinutes   = 0;
                     $status        = 'present';
 
                     if ($checkIn && $checkOut) {
-                        $inTs  = strtotime($date . ' ' . $checkIn);
-                        $outTs = strtotime($date . ' ' . $checkOut);
-                        if ($outTs > $inTs) {
-                            $workHours = round(($outTs - $inTs) / 3600, 2);
-                        }
-
-                        if ($employee->shift_start && $employee->shift_end) {
-                            $shiftStart = strtotime($date . ' ' . $employee->shift_start);
-                            $shiftEnd   = strtotime($date . ' ' . $employee->shift_end);
-                            $shiftHours = max(0, round(($shiftEnd - $shiftStart) / 3600, 2));
-                            if ($shiftHours > 0 && $workHours > $shiftHours) {
-                                $overtimeHours = round($workHours - $shiftHours, 2);
-                            }
-                        }
+                        [$workHours, $overtimeHours] = $this->calcWorkStats(
+                            $date, $checkIn, $checkOut,
+                            $employee->shift_start, $employee->shift_end
+                        );
                     }
 
-                    // تحديد التأخير
-                    if ($checkIn && $employee->shift_start) {
-                        $scheduledIn = strtotime($date . ' ' . $employee->shift_start);
-                        $actualIn    = strtotime($date . ' ' . $checkIn);
-                        if ($actualIn > $scheduledIn + 300) {
-                            $status = 'late';
-                        }
+                    // تحديد التأخير وحساب دقائقه
+                    if ($checkIn) {
+                        $lateMinutes = $this->calcLateMinutes($date, $checkIn, $employee->shift_start);
+                        if ($lateMinutes > 0) $status = 'late';
                     }
 
                     // حفظ أو تحديث — لا نكتب فوق السجلات اليدوية
@@ -509,6 +508,7 @@ PYEOF
                     $record->check_out      = $checkOut;
                     $record->work_hours     = $workHours;
                     $record->overtime_hours = $overtimeHours;
+                    $record->late_minutes   = $lateMinutes;
                     $record->status         = $status;
                     $record->is_manual      = false;
                     $record->updated_by     = Auth::id();
@@ -666,74 +666,70 @@ PYEOF
                     // ترتيب السجلات حسب الوقت
                     usort($allTimes, fn($a, $b) => strcmp($a['time'], $b['time']));
 
-                    $checkIn  = null;
-                    $checkOut = null;
-
-                    // الجهاز لا يُميّز دخول/خروج — فقط يسجّل البصمات بالتسلسل
-                    // القاعدة الثابتة: أول بصمة = دخول، آخر بصمة = خروج
-                    $checkIn  = $allTimes[0]['time'];
-                    $checkOut = count($allTimes) > 1
-                        ? $allTimes[count($allTimes) - 1]['time']
-                        : null;
-
-                    // فولباك: إذا لم يُحدَّد check_in نأخذ أول وقت
-                    if (!$checkIn && !empty($allTimes)) {
-                        $checkIn = $allTimes[0]['time'];
-                    }
-
-                    // حساب ساعات العمل
-                    $workHours     = 0;
-                    $overtimeHours = 0;
-                    $isLate        = false;
-                    $status        = 'present';
-
-                    if ($checkIn && $checkOut) {
-                        $inTs  = strtotime($date . ' ' . $checkIn);
-                        $outTs = strtotime($date . ' ' . $checkOut);
-                        if ($outTs > $inTs) {
-                            $workHours = round(($outTs - $inTs) / 3600, 2);
-                        }
-
-                        // حساب الأوفرتايم بناءً على وردية الموظف
-                        if ($employee->shift_start && $employee->shift_end) {
-                            $shiftStart = strtotime($date . ' ' . $employee->shift_start);
-                            $shiftEnd   = strtotime($date . ' ' . $employee->shift_end);
-                            $shiftHours = round(($shiftEnd - $shiftStart) / 3600, 2);
-                            if ($shiftHours > 0 && $workHours > $shiftHours) {
-                                $overtimeHours = round($workHours - $shiftHours, 2);
-                            }
-                        }
-                    }
-
-                    // تحديد التأخير
-                    if ($checkIn && $employee->shift_start) {
-                        $scheduledIn = strtotime($date . ' ' . $employee->shift_start);
-                        $actualIn    = strtotime($date . ' ' . $checkIn);
-                        if ($actualIn > $scheduledIn + 300) { // أكثر من 5 دقائق تأخير
-                            $isLate = true;
-                            $status = 'late';
-                        }
-                    }
-
-                    // حفظ / تحديث السجل
+                    // جلب السجل الموجود مسبقاً (إن وُجد)
                     $record = Attendance::firstOrNew([
                         'employee_id' => $employee->id,
                         'date'        => $date,
                     ]);
 
-                    // لا نكتب فوق السجلات اليدوية إلا إذا كانت من الجهاز
+                    // لا نكتب فوق السجلات اليدوية
                     if ($record->exists && $record->is_manual) {
                         $skipped++;
                         continue;
                     }
 
-                    $record->check_in      = $checkIn;
-                    $record->check_out     = $checkOut;
-                    $record->work_hours    = $workHours;
+                    $checkIn  = null;
+                    $checkOut = null;
+
+                    if (count($allTimes) === 1 && $record->exists && $record->check_in) {
+                        // الجهاز يرسل البصمات تدريجياً — هذه البصمة الوحيدة هي خروج
+                        // لأن الدخول محفوظ مسبقاً في قاعدة البيانات
+                        $newTime  = $allTimes[0]['time'];
+                        $checkIn  = $record->check_in;
+
+                        // نضع الجديدة كخروج فقط إذا كانت بعد وقت الدخول
+                        if ($newTime > $checkIn) {
+                            $checkOut = $newTime;
+                        } else {
+                            // البصمة قبل الدخول المحفوظ — إذن هي دخول أقدم، نتجاهلها
+                            $skipped++;
+                            continue;
+                        }
+                    } else {
+                        // أول بصمة = دخول، آخر بصمة = خروج
+                        $checkIn  = $allTimes[0]['time'];
+                        $checkOut = count($allTimes) > 1
+                            ? $allTimes[count($allTimes) - 1]['time']
+                            : null;
+                    }
+
+                    // حساب ساعات العمل
+                    $workHours     = 0;
+                    $overtimeHours = 0;
+                    $lateMinutes   = 0;
+                    $status        = 'present';
+
+                    if ($checkIn && $checkOut) {
+                        [$workHours, $overtimeHours] = $this->calcWorkStats(
+                            $date, $checkIn, $checkOut,
+                            $employee->shift_start, $employee->shift_end
+                        );
+                    }
+
+                    // تحديد التأخير وحساب دقائقه
+                    if ($checkIn) {
+                        $lateMinutes = $this->calcLateMinutes($date, $checkIn, $employee->shift_start);
+                        if ($lateMinutes > 0) $status = 'late';
+                    }
+
+                    $record->check_in       = $checkIn;
+                    $record->check_out      = $checkOut;
+                    $record->work_hours     = $workHours;
                     $record->overtime_hours = $overtimeHours;
-                    $record->status        = $status;
-                    $record->is_manual     = false;
-                    $record->updated_by    = Auth::id();
+                    $record->late_minutes   = $lateMinutes;
+                    $record->status         = $status;
+                    $record->is_manual      = false;
+                    $record->updated_by     = Auth::id();
                     $record->save();
 
                     $imported++;
@@ -754,5 +750,117 @@ PYEOF
             ]);
             return back()->with('error', 'خطأ أثناء الاتصال: ' . $e->getMessage());
         }
+    }
+
+    public function exportByEmployee(Request $request)
+    {
+        $query = Attendance::with('employee')
+            ->whereHas('employee')
+            ->orderBy('employee_id');
+
+        if ($request->filled('date_from')) {
+            $query->whereDate('date', '>=', $request->date_from);
+        }
+        if ($request->filled('date_to')) {
+            $query->whereDate('date', '<=', $request->date_to);
+        }
+        if ($request->filled('employee_id')) {
+            $query->where('employee_id', $request->employee_id);
+        }
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        $records = $query->get()->groupBy('employee_id')
+            ->sortBy(fn($group) => $group->first()->employee->name ?? '');
+
+        $statusLabels = [
+            'present' => 'حاضر',
+            'absent'  => 'غائب',
+            'late'    => 'متأخر',
+            'leave'   => 'إجازة',
+            'holiday' => 'عطلة',
+        ];
+
+        $boldStyle  = new \OpenSpout\Common\Entity\Style\Style(fontBold: true);
+        $totalStyle = new \OpenSpout\Common\Entity\Style\Style(fontBold: true, backgroundColor: 'C6EFCE');
+
+        $writer = new \OpenSpout\Writer\XLSX\Writer();
+        $writer->openToBrowser('attendance_by_employee.xlsx');
+
+        $writer->addRow(\OpenSpout\Common\Entity\Row::fromValuesWithStyle(
+            ['اسم الموظف', 'التاريخ', 'وقت الدخول', 'وقت الخروج', 'ساعات العمل', 'أوفرتايم', 'تأخير (دقيقة)', 'الحالة'],
+            $boldStyle
+        ));
+
+        foreach ($records as $employeeId => $group) {
+            $employeeName  = $group->first()->employee->name ?? '—';
+            $totalDays     = $group->count();
+            $totalPresent  = $group->whereIn('status', ['present', 'late'])->count();
+            $totalHours    = round($group->sum('work_hours'), 2);
+            $totalOvertime = round($group->sum('overtime_hours'), 2);
+
+            foreach ($group->sortBy('date') as $rec) {
+                $writer->addRow(\OpenSpout\Common\Entity\Row::fromValues([
+                    $employeeName,
+                    $rec->date?->format('Y-m-d') ?? '',
+                    $rec->check_in  ?? '—',
+                    $rec->check_out ?? '—',
+                    $rec->work_hours     ?? 0,
+                    $rec->overtime_hours ?? 0,
+                    $rec->late_minutes   ?? 0,
+                    $statusLabels[$rec->status] ?? $rec->status,
+                ]));
+            }
+
+            $writer->addRow(\OpenSpout\Common\Entity\Row::fromValuesWithStyle([
+                "إجمالي: {$employeeName}",
+                "أيام: {$totalDays}",
+                "حضور: {$totalPresent}",
+                '',
+                "ساعات: {$totalHours}",
+                "أوفرتايم: {$totalOvertime}",
+                '',
+                '',
+            ], $totalStyle));
+
+            $writer->addRow(\OpenSpout\Common\Entity\Row::fromValues(['']));
+        }
+
+        $writer->close();
+    }
+
+    // يحسب ساعات العمل والأوفرتايم مع دعم وردية الليل (checkout < checkin)
+    private function calcWorkStats(string $date, string $checkIn, ?string $checkOut, ?string $shiftStart, ?string $shiftEnd): array
+    {
+        if (!$checkOut) return [0, 0];
+
+        $inTs  = strtotime("$date $checkIn");
+        $outTs = strtotime("$date $checkOut");
+        if ($outTs <= $inTs) $outTs += 86400;
+        $workHours = round(($outTs - $inTs) / 3600, 2);
+
+        $shiftHours = 8.0;
+        if ($shiftStart && $shiftEnd) {
+            $ssTs = strtotime("$date $shiftStart");
+            $seTs = strtotime("$date $shiftEnd");
+            if ($seTs <= $ssTs) $seTs += 86400;
+            $shiftHours = max(1, round(($seTs - $ssTs) / 3600, 2));
+        }
+
+        $overtimeHours = $workHours > $shiftHours ? round($workHours - $shiftHours, 2) : 0;
+        return [$workHours, $overtimeHours];
+    }
+
+    // يحسب دقائق التأخير (صفر إذا لا يوجد وردية أو جاء في الوقت)
+    private function calcLateMinutes(string $date, string $checkIn, ?string $shiftStart): int
+    {
+        if (!$shiftStart) return 0;
+        $scheduledIn = strtotime("$date $shiftStart");
+        $actualIn    = strtotime("$date $checkIn");
+        if ($actualIn > $scheduledIn + 300) {
+            return (int) round(($actualIn - $scheduledIn) / 60);
+        }
+        return 0;
     }
 }

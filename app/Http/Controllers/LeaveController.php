@@ -6,7 +6,9 @@ use App\Models\LeaveRequest;
 use App\Models\LeaveType;
 use App\Models\LeaveBalance;
 use App\Models\Employee;
+use App\Notifications\LeaveStatusChanged;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Notification;
 use Carbon\Carbon;
 
 class LeaveController extends Controller
@@ -76,6 +78,8 @@ class LeaveController extends Controller
         );
         $balance->increment('used_days', $leave->total_days);
 
+        $this->notifyEmployee($leave);
+
         return back()->with('success', 'تمت الموافقة على الإجازة ✅');
     }
 
@@ -88,6 +92,8 @@ class LeaveController extends Controller
             'notes'            => $request->notes,
             'rejection_reason' => $request->notes,
         ]);
+
+        $this->notifyEmployee($leave);
 
         return back()->with('success', 'تم رفض طلب الإجازة');
     }
@@ -146,5 +152,15 @@ class LeaveController extends Controller
 
         $leaveType->delete();
         return back()->with('success', 'تم حذف نوع الإجازة');
+    }
+
+    private function notifyEmployee(LeaveRequest $leave): void
+    {
+        $notifiable = $leave->employee->user ?? null;
+        if ($notifiable && $notifiable->email) {
+            try {
+                $notifiable->notify(new LeaveStatusChanged($leave));
+            } catch (\Throwable) {}
+        }
     }
 }

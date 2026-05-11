@@ -8,6 +8,8 @@ use App\Http\Controllers\Api\LoanController;
 use App\Http\Controllers\Api\LeaveController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ChatController;
+use App\Http\Controllers\Api\AttendanceController;
+use App\Http\Controllers\Api\TaskController as ApiTaskController;
 
 /*
 |--------------------------------------------------------------------------
@@ -15,43 +17,52 @@ use App\Http\Controllers\Api\ChatController;
 |--------------------------------------------------------------------------
 */
 
-// ===== Public Routes (no auth) =====
 Route::prefix('v1')->group(function () {
 
     Route::post('/login',  [AuthController::class, 'login']);
     Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
 
-    // ===== Protected Routes =====
     Route::middleware('auth:sanctum')->group(function () {
 
         // الملف الشخصي
-        Route::get('/profile',         [ProfileController::class, 'show']);
-        Route::put('/profile/bank',    [ProfileController::class, 'updateBank']);
+        Route::get('/profile',      [ProfileController::class, 'show']);
+        Route::put('/profile/bank', [ProfileController::class, 'updateBank']);
 
         // الرواتب
-        Route::get('/salary',          [SalaryController::class, 'index']);
-        Route::get('/salary/{id}',     [SalaryController::class, 'show']);
-        Route::post('/salary/{id}/request-statement', [SalaryController::class, 'requestStatement']);
+        Route::get('/salary',                             [SalaryController::class, 'index']);
+        Route::get('/salary/{id}',                        [SalaryController::class, 'show']);
+        Route::post('/salary/{id}/request-statement',     [SalaryController::class, 'requestStatement']);
 
         // السلف
-        Route::get('/loans',           [LoanController::class, 'index']);
-        Route::post('/loans',          [LoanController::class, 'store']);
+        Route::get('/loans',  [LoanController::class, 'index']);
+        Route::post('/loans', [LoanController::class, 'store']);
 
         // الإجازات
-        Route::get('/leaves',          [LeaveController::class, 'index']);
-        Route::post('/leaves',         [LeaveController::class, 'store']);
+        Route::get('/leaves',  [LeaveController::class, 'index']);
+        Route::post('/leaves', [LeaveController::class, 'store']);
+
+        // الحضور
+        Route::get('/attendance',      [AttendanceController::class, 'index']);
+        Route::get('/attendance/{id}', [AttendanceController::class, 'show']);
 
         // الإشعارات
-        Route::get('/notifications',         [NotificationController::class, 'index']);
-        Route::post('/notifications/read',   [NotificationController::class, 'markAllRead']);
-        Route::post('/fcm-token',            [NotificationController::class, 'saveFcmToken']);
+        Route::get('/notifications',       [NotificationController::class, 'index']);
+        Route::post('/notifications/read', [NotificationController::class, 'markAllRead']);
+        Route::post('/fcm-token',          [NotificationController::class, 'saveFcmToken']);
 
         // المحادثات
-        Route::get('/chat',                  [ChatController::class, 'index']);
-        Route::post('/chat',                 [ChatController::class, 'store']);
-        Route::post('/chat/read',            [ChatController::class, 'markRead']);
-        Route::get('/chat/new',              [ChatController::class, 'getNew']);
-        Route::get('/chat/unread-count',     [ChatController::class, 'getUnreadCount']);
+        Route::get('/chat',              [ChatController::class, 'index']);
+        Route::post('/chat',             [ChatController::class, 'store']);
+        Route::post('/chat/read',        [ChatController::class, 'markRead']);
+        Route::get('/chat/new',          [ChatController::class, 'getNew']);
+        Route::get('/chat/unread-count', [ChatController::class, 'getUnreadCount']);
+
+        // المهام
+        Route::get('/tasks',                          [ApiTaskController::class, 'index']);
+        Route::get('/tasks/{task}',                   [ApiTaskController::class, 'show']);
+        Route::post('/tasks/{task}',                  [ApiTaskController::class, 'addComment']);
+        Route::put('/tasks/{task}',                   [ApiTaskController::class, 'update']);
+        Route::delete('/tasks/{task}',                [ApiTaskController::class, 'destroy']);
 
     });
 });

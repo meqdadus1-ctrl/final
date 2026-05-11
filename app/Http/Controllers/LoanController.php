@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\Loan;
 use App\Models\Employee;
+use App\Notifications\LoanStatusChanged;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class LoanController extends Controller
 {
@@ -40,7 +42,7 @@ class LoanController extends Controller
             ])->withInput();
         }
 
-        Loan::create([
+        $loan = Loan::create([
             'employee_id'        => $request->employee_id,
             'total_amount'       => $request->total_amount,
             'installment_amount' => $request->installment_amount,
@@ -52,6 +54,8 @@ class LoanController extends Controller
             'status'             => 'active',
             'description'        => $request->description,
         ]);
+
+        $this->notifyEmployee($loan->load('employee'));
 
         return redirect()->route('loans.index')->with('success', 'تم إضافة السلفة بنجاح');
     }
@@ -88,20 +92,41 @@ class LoanController extends Controller
 
     public function payInstallment(Loan $loan)
     {
-        if ($loan->status !== 'active' || $loan->is_paused) {
+        $updated = false;
+
+        DB::transaction(function () use ($loan, &$updated) {
+            $fresh = Loan::where('id', $loan->id)->lockForUpdate()->first();
+
+            if ($fresh->status !== 'active' || $fresh->is_paused) {
+                return;
+            }
+
+            $fresh->amount_paid        += $fresh->installment_amount;
+            $fresh->installments_paid  += 1;
+            $fresh->last_payment_date   = now();
+
+            if ($fresh->installments_paid >= $fresh->installments_total) {
+                $fresh->status = 'completed';
+            }
+
+            $fresh->save();
+            $updated = true;
+        });
+
+        if (!$updated) {
             return back()->with('error', 'لا يمكن دفع قسط لهذه السلفة');
         }
 
-        $loan->amount_paid        += $loan->installment_amount;
-        $loan->installments_paid  += 1;
-        $loan->last_payment_date   = now();
-
-        if ($loan->installments_paid >= $loan->installments_total) {
-            $loan->status = 'completed';
-        }
-
-        $loan->save();
-
         return back()->with('success', 'تم دفع القسط بنجاح');
+    }
+
+    private function notifyEmployee(Loan $loan): void
+    {
+        $notifiable = $loan->employee->user ?? null;
+        if ($notifiable && $notifiable->email) {
+            try {
+                $notifiable->notify(new LoanStatusChanged($loan));
+            } catch (\Throwable) {}
+        }
     }
 }

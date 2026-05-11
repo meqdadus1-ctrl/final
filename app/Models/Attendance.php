@@ -15,6 +15,7 @@ class Attendance extends Model
         'check_out',
         'work_hours',
         'overtime_hours',
+        'late_minutes',
         'status',
         'leave_approved',
         'leave_reason',

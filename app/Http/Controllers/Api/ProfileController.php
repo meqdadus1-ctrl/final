@@ -33,6 +33,7 @@ class ProfileController extends Controller
                 // بيانات البنك
                 'bank' => [
                     'bank_name'    => $employee->bank?->name ?? null,
+                    'bank_type'    => $employee->bank_type ?? null,
                     'bank_id'      => $employee->bank_id,
                     'account_name' => $employee->account_name,
                     'bank_account' => $employee->bank_account,

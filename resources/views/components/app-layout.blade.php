@@ -93,6 +93,11 @@
                 @endif
             @endauth
 
+            <div class="nav-section">الإعدادات</div>
+            <a href="{{ route('settings.messenger') }}" class="nav-link {{ request()->routeIs('settings.*') ? 'active' : '' }}">
+                <i class="fas fa-comment-dots"></i> إعدادات الرسائل
+            </a>
+
             <div class="nav-section">الحساب</div>
             <a href="{{ route('profile.edit') }}" class="nav-link {{ request()->routeIs('profile.*') ? 'active' : '' }}">
                 <i class="fas fa-user-cog"></i> الملف الشخصي

@@ -54,6 +54,9 @@ class RolePermissionSeeder extends Seeder
             // المستخدمون والأدوار
             'users.view', 'users.create', 'users.edit',
             'users.delete', 'users.assign_roles',
+
+            // المهام والتقويم
+            'tasks.view', 'tasks.create', 'tasks.edit', 'tasks.delete',
         ];
 
         foreach ($permissions as $permission) {
@@ -80,6 +83,7 @@ class RolePermissionSeeder extends Seeder
             'jobs.view', 'jobs.create', 'jobs.edit',
             'reports.view', 'reports.export',
             'banks.view',
+            'tasks.view', 'tasks.create', 'tasks.edit', 'tasks.delete',
         ]);
 
         // --- Manager: عرض فقط + موافقة الإجازات والسلف ---
@@ -92,15 +96,17 @@ class RolePermissionSeeder extends Seeder
             'loans.view', 'loans.approve',
             'leaves.view', 'leaves.approve', 'leaves.reject',
             'reports.view',
+            'tasks.view', 'tasks.create', 'tasks.edit',
         ]);
 
-        // --- Employee: بياناته فقط ---
+        // --- Employee: بياناته فقط + مشاهدة المهام المسندة إليه ---
         $employee = Role::firstOrCreate(['name' => 'employee']);
         $employee->syncPermissions([
             'attendance.view_own',
             'payslips.view_own', 'payslips.pdf',
             'loans.view_own', 'loans.create',
             'leaves.view_own', 'leaves.create',
+            'tasks.view',
         ]);
 
         // =====================================================

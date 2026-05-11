@@ -220,16 +220,29 @@ class LedgerImportController extends Controller
             try {
                 // Excel serial: الأيام منذ 1900-01-01
                 $ts = \DateTime::createFromFormat('U', (string) round(((float)$str - 25569) * 86400));
-                return $ts ? $ts->format('Y-m-d') : null;
+                if (!$ts) return null;
+                $parsed = $ts->format('Y-m-d');
+                $year = (int) substr($parsed, 0, 4);
+                return ($year >= 2000 && $year <= 2100) ? $parsed : null;
             } catch (\Exception $e) {
                 return null;
             }
         }
 
         try {
-            return Carbon::parse($str)->toDateString();
+            $parsed = Carbon::parse($str)->toDateString();
         } catch (\Exception $e) {
             return null;
         }
+
+        // Reject dates with years clearly outside valid payroll range.
+        // SimpleXLSX converts empty/zero Excel date cells to "1899-12-30" or
+        // nearby dates — those must be treated as missing dates, not real ones.
+        $year = (int) substr($parsed, 0, 4);
+        if ($year < 2000 || $year > 2100) {
+            return null;
+        }
+
+        return $parsed;
     }
 }

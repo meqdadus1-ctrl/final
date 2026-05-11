@@ -55,6 +55,110 @@
 .badge-status-completed{ background: #d1fae5; color: #065f46; }
 </style>
 
+{{-- ===== جدول الملخص المقارن ===== --}}
+@if(in_array('summary', $sections))
+<div class="card mb-4 shadow-sm" dir="rtl">
+    <div class="card-header fw-bold d-flex justify-content-between align-items-center" style="background:#1e3a5f; color:#fff;">
+        <span><i class="fas fa-table me-2"></i>ملخص مقارن — جميع الموظفين</span>
+        <small class="opacity-75">{{ \Carbon\Carbon::parse($from)->format('d/m/Y') }} — {{ \Carbon\Carbon::parse($to)->format('d/m/Y') }}</small>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover table-bordered table-report mb-0" style="font-size:12px">
+            <thead>
+                <tr class="table-dark text-center">
+                    <th class="text-end" style="min-width:130px">الموظف</th>
+                    <th>القسم</th>
+                    @if(in_array('attendance', $sections))
+                    <th title="أيام الحضور">حضور</th>
+                    <th title="أيام الغياب">غياب</th>
+                    <th title="إجمالي ساعات العمل">ساعات</th>
+                    <th title="ساعات إضافية">أوفرتايم</th>
+                    <th title="دقائق التأخر الإجمالية">دق. تأخر</th>
+                    @endif
+                    @if(in_array('salary', $sections))
+                    <th class="text-end">إجمالي ₪</th>
+                    <th class="text-end">خصومات ₪</th>
+                    <th class="text-end" style="background:#d1fae5; color:#065f46">الصافي ₪</th>
+                    @endif
+                    @if(in_array('loans', $sections))
+                    <th class="text-end" title="إجمالي السلف المتبقية">سلف متبقية ₪</th>
+                    @endif
+                    <th class="text-end" title="الرصيد الحالي في كشف الحساب">الرصيد ₪</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach($data as $ed)
+                @php
+                    $att   = $ed['attendance'] ?? null;
+                    $sal   = $ed['salary']     ?? null;
+                    $loans = $ed['loans']      ?? null;
+                @endphp
+                <tr>
+                    <td class="fw-semibold text-end">{{ $ed['employee']->name }}</td>
+                    <td class="text-muted small text-center">{{ $ed['employee']->department->name ?? '—' }}</td>
+                    @if(in_array('attendance', $sections))
+                    <td class="text-center text-success fw-semibold">{{ $att['present_days']       ?? '—' }}</td>
+                    <td class="text-center {{ ($att['absent_days'] ?? 0) > 0 ? 'text-danger fw-semibold' : 'text-muted' }}">{{ $att['absent_days'] ?? '—' }}</td>
+                    <td class="text-center">{{ $att['total_hours']        ?? '—' }}</td>
+                    <td class="text-center {{ ($att['overtime_hours'] ?? 0) > 0 ? 'text-info fw-semibold' : 'text-muted' }}">{{ $att['overtime_hours'] ?? '—' }}</td>
+                    <td class="text-center {{ ($att['total_late_minutes'] ?? 0) > 0 ? 'text-warning fw-semibold' : 'text-muted' }}">{{ ($att['total_late_minutes'] ?? 0) > 0 ? $att['total_late_minutes'].'د' : '—' }}</td>
+                    @endif
+                    @if(in_array('salary', $sections))
+                    <td class="text-end">{{ $sal ? number_format($sal['total_gross'], 2) : '—' }}</td>
+                    <td class="text-end text-danger">{{ $sal ? number_format($sal['total_deductions'], 2) : '—' }}</td>
+                    <td class="text-end fw-bold text-success" style="background:#f0fdf4">{{ $sal ? number_format($sal['total_net'], 2) : '—' }}</td>
+                    @endif
+                    @if(in_array('loans', $sections))
+                    <td class="text-end {{ ($loans['total_remaining'] ?? 0) > 0 ? 'text-danger fw-semibold' : 'text-muted' }}">
+                        {{ ($loans['total_remaining'] ?? 0) > 0 ? number_format($loans['total_remaining'], 2) : '—' }}
+                    </td>
+                    @endif
+                    <td class="text-end fw-bold {{ $ed['ledger_balance'] >= 0 ? 'text-success' : 'text-warning' }}">
+                        {{ number_format($ed['ledger_balance'], 2) }}
+                    </td>
+                </tr>
+                @endforeach
+            </tbody>
+            @if(count($data) > 1)
+            @php
+                $totPresent  = collect($data)->sum(fn($d) => $d['attendance']['present_days']      ?? 0);
+                $totAbsent   = collect($data)->sum(fn($d) => $d['attendance']['absent_days']       ?? 0);
+                $totHours    = collect($data)->sum(fn($d) => $d['attendance']['total_hours']       ?? 0);
+                $totOT       = collect($data)->sum(fn($d) => $d['attendance']['overtime_hours']    ?? 0);
+                $totLateMin  = collect($data)->sum(fn($d) => $d['attendance']['total_late_minutes']?? 0);
+                $totGross    = collect($data)->sum(fn($d) => $d['salary']['total_gross']           ?? 0);
+                $totDed      = collect($data)->sum(fn($d) => $d['salary']['total_deductions']      ?? 0);
+                $totNet      = collect($data)->sum(fn($d) => $d['salary']['total_net']             ?? 0);
+                $totLoansRem = collect($data)->sum(fn($d) => $d['loans']['total_remaining']        ?? 0);
+                $totBalance  = collect($data)->sum(fn($d) => $d['ledger_balance']                  ?? 0);
+            @endphp
+            <tfoot>
+                <tr style="background:#1e3a5f; color:#fff; font-weight:700;">
+                    <td class="text-end" colspan="2">الإجمالي ({{ count($data) }} موظف)</td>
+                    @if(in_array('attendance', $sections))
+                    <td class="text-center">{{ $totPresent }}</td>
+                    <td class="text-center">{{ $totAbsent }}</td>
+                    <td class="text-center">{{ round($totHours, 1) }}</td>
+                    <td class="text-center">{{ round($totOT, 1) }}</td>
+                    <td class="text-center">{{ $totLateMin > 0 ? $totLateMin.'د' : '—' }}</td>
+                    @endif
+                    @if(in_array('salary', $sections))
+                    <td class="text-end">{{ number_format($totGross, 2) }}</td>
+                    <td class="text-end">{{ number_format($totDed, 2) }}</td>
+                    <td class="text-end" style="color:#86efac">{{ number_format($totNet, 2) }}</td>
+                    @endif
+                    @if(in_array('loans', $sections))
+                    <td class="text-end">{{ number_format($totLoansRem, 2) }}</td>
+                    @endif
+                    <td class="text-end">{{ number_format($totBalance, 2) }}</td>
+                </tr>
+            </tfoot>
+            @endif
+        </table>
+    </div>
+</div>
+@endif
+
 @forelse($data as $empData)
 @php $employee = $empData['employee']; @endphp
 
@@ -100,6 +204,7 @@
             <div class="col"><div class="stat-box"><div class="val text-primary">{{ $att['total_hours'] }}</div><div class="lbl">إجمالي الساعات</div></div></div>
             <div class="col"><div class="stat-box"><div class="val text-info">{{ $att['overtime_hours'] }}</div><div class="lbl">أوفرتايم (س)</div></div></div>
             <div class="col"><div class="stat-box"><div class="val text-secondary">{{ $att['late_count'] }}</div><div class="lbl">مرات التأخر</div></div></div>
+            <div class="col"><div class="stat-box"><div class="val text-warning">{{ $att['total_late_minutes'] ?? 0 }}</div><div class="lbl">دق. التأخر</div></div></div>
         </div>
 
         @if($att['records']->isNotEmpty())

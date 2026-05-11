@@ -29,9 +29,8 @@
         <input type="hidden" name="hours_worked"        value="{{ $data['hoursWorked'] }}">
         <input type="hidden" id="overtime_hours_hidden" name="overtime_hours" value="{{ $data['overtimeHours'] }}">
         <input type="hidden" id="overtime_rate_hidden"  name="overtime_rate"  value="{{ $data['overtimeRate'] ?? $data['employee']->overtime_rate ?? 1.5 }}">
-        <input type="hidden" name="late_minutes"        value="{{ $data['lateMinutes'] }}">
-        <input type="hidden" name="late_factor"         value="{{ $data['lateFactor'] }}">
-        <input type="hidden" name="hourly_rate"         value="{{ $data['hourlyRate'] }}">
+        <input type="hidden" name="late_minutes" value="{{ $data['lateMinutes'] }}">
+        <input type="hidden" name="hourly_rate" value="{{ $data['hourlyRate'] }}">
         <input type="hidden" name="salary_multiplier"   value="{{ $data['salaryMultiplier'] }}">
         <input type="hidden" id="balance_before_hidden" name="balance_before" value="{{ $data['currentBalance'] }}">
 
@@ -90,6 +89,11 @@
                 <div class="card shadow-sm">
                     <div class="card-header py-2 small fw-semibold">
                         <i class="fas fa-clock me-1"></i>سجل الحضور ({{ $data['attendances']->count() }} يوم)
+                        @if($data['lateMinutes'] > 0)
+                            <span class="badge bg-warning text-dark ms-2">
+                                <i class="fas fa-exclamation-circle me-1"></i>تأخر {{ $data['lateMinutes'] }} د إجمالاً
+                            </span>
+                        @endif
                     </div>
                     <div class="card-body p-0">
                         <table class="table table-sm mb-0 small">
@@ -184,28 +188,28 @@
                                     </td>
                                 </tr>
 
-                                {{-- D1: خصم التأخير --}}
-                                <tr class="{{ $data['lateMinutes'] > 0 ? 'table-warning' : '' }}">
+                                {{-- C: إضافات يدوية --}}
+                                <tr>
                                     <td class="px-3 py-2">
-                                        <span class="badge bg-warning text-dark me-2">D1</span>
-                                        خصم التأخير
-                                        <small class="text-muted">{{ $data['lateMinutes'] }} د | سماح {{ $data['lateGrace'] }} د | معامل {{ $data['lateFactor'] }}×</small>
+                                        <span class="badge bg-success me-2">C</span>
+                                        إضافات يدوية
+                                        <small class="text-muted d-block mt-1">مكافأة، بدل، أو أي إضافة مباشرة</small>
                                     </td>
                                     <td class="text-end px-3 py-2" style="min-width:160px">
                                         <div class="input-group input-group-sm justify-content-end">
-                                            <span class="input-group-text text-danger fw-bold">−</span>
-                                            <input type="number" name="late_deduction" id="late_deduction"
+                                            <span class="input-group-text text-success fw-bold">+</span>
+                                            <input type="number" name="manual_additions" id="manual_additions"
                                                 class="form-control form-control-sm text-end calc-input"
                                                 style="max-width:100px"
-                                                value="{{ $data['lateDeduction'] }}" step="0.01" min="0">
+                                                value="0" step="1" min="0">
                                         </div>
                                     </td>
                                 </tr>
 
-                                {{-- D2: خصم الغياب --}}
+                                {{-- D1: خصم الغياب --}}
                                 <tr>
                                     <td class="px-3 py-2">
-                                        <span class="badge bg-warning text-dark me-2">D2</span>
+                                        <span class="badge bg-warning text-dark me-2">D1</span>
                                         خصم الغياب بإذن
                                     </td>
                                     <td class="text-end px-3 py-2">
@@ -219,10 +223,10 @@
                                     </td>
                                 </tr>
 
-                                {{-- D3: خصومات يدوية --}}
+                                {{-- D2: خصومات يدوية --}}
                                 <tr>
                                     <td class="px-3 py-2">
-                                        <span class="badge bg-danger me-2">D3</span>
+                                        <span class="badge bg-danger me-2">D2</span>
                                         خصومات يدوية أخرى
                                     </td>
                                     <td class="text-end px-3 py-2">
@@ -331,42 +335,6 @@
                 </div>
                 @endif
 
-                {{-- ===== إضافة تعديل جديد أثناء الراتب ===== --}}
-                <div class="card shadow-sm mb-3">
-                    <div class="card-header py-2">
-                        <a class="text-decoration-none text-dark fw-semibold" data-bs-toggle="collapse" href="#newAdjSection">
-                            <i class="fas fa-plus-circle text-success me-2"></i>إضافة تعديل جديد (اختياري)
-                            <i class="fas fa-chevron-down small ms-1"></i>
-                        </a>
-                    </div>
-                    <div class="collapse" id="newAdjSection">
-                        <div class="card-body">
-                            <div class="row g-3">
-                                <div class="col-md-3">
-                                    <label class="form-label small fw-semibold">النوع</label>
-                                    <select name="new_adj_type" class="form-select form-select-sm">
-                                        <option value="">— بدون —</option>
-                                        <option value="bonus">مكافأة (إضافة)</option>
-                                        <option value="expense">مصروف (إضافة)</option>
-                                        <option value="deduction">خصم</option>
-                                        <option value="other">أخرى</option>
-                                    </select>
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="form-label small fw-semibold">المبلغ</label>
-                                    <input type="number" name="new_adj_amount" class="form-control form-control-sm"
-                                        placeholder="0.00" step="0.01" min="0.01">
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label small fw-semibold">السبب / الوصف</label>
-                                    <input type="text" name="new_adj_reason" class="form-control form-control-sm"
-                                        placeholder="مثال: مكافأة أداء أسبوع كذا">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
                 {{-- ===== طريقة الدفع + ملاحظات ===== --}}
                 <div class="card shadow-sm mb-3">
                     <div class="card-body">
@@ -401,21 +369,37 @@
                     </div>
                 </div>
 
-                {{-- ===== إشعار SMS ===== --}}
+                {{-- ===== إشعار SMS / WhatsApp ===== --}}
+                @php
+                    $msgCfg    = \App\Models\MessengerSetting::getInstance();
+                    $driverLabel = $msgCfg->driver === 'whatsapp_cloud' ? 'WhatsApp' : 'SMS';
+                    $msgIcon     = $msgCfg->driver === 'whatsapp_cloud' ? '💬' : '📱';
+                @endphp
                 <div class="card shadow-sm mb-3 border-0" style="background:#f0fdf4">
                     <div class="card-body py-3">
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="checkbox" name="send_sms" id="send_sms" value="1"
-                                {{ $data['employee']->mobile ? '' : 'disabled' }}
-                                onchange="toggleSms(this)">
-                            <label class="form-check-label fw-semibold" for="send_sms">
-                                📱 إرسال SMS للموظف
-                                @if(!$data['employee']->mobile)
-                                    <span class="text-danger small">(لا يوجد رقم جوال مسجّل)</span>
-                                @else
-                                    <span class="text-muted small">({{ $data['employee']->mobile }})</span>
-                                @endif
-                            </label>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <div class="form-check mb-0">
+                                <input class="form-check-input" type="checkbox" name="send_sms" id="send_sms" value="1"
+                                    {{ ($data['employee']->mobile && $msgCfg->is_active) ? '' : 'disabled' }}
+                                    onchange="toggleSms(this)">
+                                <label class="form-check-label fw-semibold" for="send_sms">
+                                    {{ $msgIcon }} إرسال {{ $driverLabel }} للموظف
+                                    @if(!$data['employee']->mobile)
+                                        <span class="text-danger small">(لا يوجد رقم جوال مسجّل)</span>
+                                    @elseif(!$msgCfg->is_active)
+                                        <span class="text-warning small">(الإرسال معطّل —
+                                            <a href="{{ route('settings.messenger') }}" target="_blank">الإعدادات</a>)
+                                        </span>
+                                    @else
+                                        <span class="text-muted small">({{ $data['employee']->mobile }})</span>
+                                    @endif
+                                </label>
+                            </div>
+                            @if($msgCfg->is_active)
+                                <a href="{{ route('settings.messenger') }}" class="small text-muted" target="_blank">
+                                    <i class="fas fa-cog me-1"></i>إعدادات الإرسال
+                                </a>
+                            @endif
                         </div>
                         <div id="sms_section" style="display:none">
                             <textarea name="sms_message" id="sms_message" class="form-control form-control-sm" rows="2"></textarea>
@@ -474,10 +458,12 @@ function syncBalance(val) {
 function calcNet() {
     let additions = 0;
     let deductions = 0;
-    let loanDeduct = 0;
 
     // A + B (B يتغير عند تعديل الأوفرتايم)
     additions += SALARY_A + salaryB;
+
+    // C: إضافات يدوية مباشرة
+    additions += parseFloat(document.getElementById('manual_additions').value) || 0;
 
     // التعديلات المحددة من القائمة المعلّقة
     document.querySelectorAll('.adj-check:checked').forEach(function(el) {
@@ -489,25 +475,23 @@ function calcNet() {
         else deductions += val;
     });
 
-    // خصومات الراتب (D1 + D2 + D3)
-    deductions += parseFloat(document.getElementById('late_deduction').value) || 0;
+    // خصومات الراتب (D1 + D2)
     deductions += parseFloat(document.getElementById('absence_deduction').value) || 0;
     deductions += parseFloat(document.getElementById('manual_deductions').value) || 0;
 
     // قسط السلفة (E)
-    loanDeduct = parseFloat(document.getElementById('loan_deduction').value) || 0;
-    deductions += loanDeduct;
+    deductions += parseFloat(document.getElementById('loan_deduction').value) || 0;
 
     const net = Math.max(0, additions - deductions);
     const el = document.getElementById('net_salary_display');
-    el.textContent = net.toFixed(2) + ' ₪';
+    el.textContent = Math.round(net) + ' ₪';
 
     // الرصيد المتوقع بعد الراتب
     const currentBal = parseFloat(document.getElementById('balance_input').value) || 0;
-    const newBal = currentBal + net;
+    const newBal = currentBal + Math.round(net);
     const balEl = document.getElementById('expected_balance');
     if (balEl) {
-        balEl.textContent = newBal.toFixed(2) + ' ₪';
+        balEl.textContent = newBal + ' ₪';
         balEl.className = 'fw-bold ' + (newBal >= 0 ? 'text-success' : 'text-danger');
     }
 }
@@ -538,9 +522,14 @@ function toggleSms(el) {
 }
 
 function updateSmsMessage() {
-    const net = parseFloat(document.getElementById('net_salary_display').textContent) || 0;
-    const bankAccount = '{{ $data['employee']->bank_account ?? '' }}';
-    const msg = `تم ايداع الراتب ${net.toFixed(2)} شيكل الى حسابك (${bankAccount || 'غير مسجّل'})`;
+    const net      = parseInt(document.getElementById('net_salary_display').textContent) || 0;
+    const template = @json($msgCfg->salary_template ?? 'تم احتساب راتبك عن الفترة {period} بمبلغ {amount} ₪');
+    const period   = '{{ $data['fiscalPeriod'] }}';
+    const name     = '{{ $data['employee']->name }}';
+    const msg = template
+        .replace('{amount}', net)
+        .replace('{period}', period)
+        .replace('{name}',   name);
     document.getElementById('sms_message').value = msg;
 }
 

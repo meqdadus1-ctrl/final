@@ -11,6 +11,7 @@
         "laravel/framework": "^13.0",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^3.0",
+        "openspout/openspout": "^5.3",
         "rats/zkteco": "^002.0",
         "shuchkin/simplexlsx": "^1.1",
         "spatie/laravel-permission": "^7.3"

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Employee;
 use App\Models\Department;
 use App\Models\Bank;
+use App\Exports\ExcelExport;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
@@ -78,6 +79,8 @@ class EmployeeController extends Controller
         ]);
 
         $data = $request->except('photo');
+        $data['base_salary'] = $data['base_salary'] ?? 0;
+        $data['hourly_rate'] = $data['hourly_rate'] ?? 0;
 
         // رفع الصورة
         if ($request->hasFile('photo')) {
@@ -136,6 +139,8 @@ class EmployeeController extends Controller
         ]);
 
         $data = $request->except('photo');
+        $data['base_salary'] = $data['base_salary'] ?? 0;
+        $data['hourly_rate'] = $data['hourly_rate'] ?? 0;
 
         // رفع صورة جديدة
         if ($request->hasFile('photo')) {
@@ -162,5 +167,32 @@ class EmployeeController extends Controller
 
         return redirect()->route('employees.index')
             ->with('success', 'تم حذف الموظف بنجاح');
+    }
+
+    public function export(Request $request)
+    {
+        $employees = Employee::with('department')
+            ->when($request->status, fn($q) => $q->where('status', $request->status))
+            ->when($request->department_id, fn($q) => $q->where('department_id', $request->department_id))
+            ->orderBy('name')->get();
+
+        $headers = ['رقم الموظف','الاسم','القسم','المسمى الوظيفي','الحالة',
+                    'تاريخ التوظيف','نوع العقد','الجوال','نوع الراتب','الراتب الأساسي','أجر الساعة'];
+
+        $rows = $employees->map(fn($e) => [
+            $e->employee_number ?? '',
+            $e->name,
+            $e->department->name ?? '',
+            $e->job_title ?? '',
+            $e->status === 'active' ? 'نشط' : 'غير نشط',
+            $e->hire_date?->format('Y/m/d') ?? '',
+            $e->contract_type ?? '',
+            $e->mobile ?? '',
+            $e->salary_type === 'hourly' ? 'بالساعة' : 'ثابت',
+            $e->salary_type === 'hourly' ? '' : ($e->base_salary ?? $e->salary ?? ''),
+            $e->salary_type === 'hourly' ? ($e->hourly_rate ?? '') : '',
+        ]);
+
+        return ExcelExport::download('الموظفون_' . now()->format('Y-m-d') . '.xlsx', $headers, $rows);
     }
 }

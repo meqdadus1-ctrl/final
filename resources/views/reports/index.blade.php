@@ -49,7 +49,14 @@
                     <div class="card-header py-2 fw-semibold small">
                         <i class="fas fa-list-check me-1 text-primary"></i>أقسام التقرير
                     </div>
-                    <div class="card-body">
+                    <div class="card-body pb-2">
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" name="sections[]" value="summary" id="sec_sum" checked>
+                            <label class="form-check-label small" for="sec_sum">
+                                <span class="badge bg-dark me-1">★</span>ملخص مقارن (جدول شامل)
+                            </label>
+                        </div>
+                        <hr class="my-2">
                         <div class="form-check form-switch mb-2">
                             <input class="form-check-input" type="checkbox" name="sections[]" value="attendance" id="sec_att" checked>
                             <label class="form-check-label small" for="sec_att">
@@ -83,10 +90,34 @@
                         class="btn btn-primary">
                         <i class="fas fa-eye me-2"></i>معاينة التقرير
                     </button>
-                    <button type="submit" formaction="{{ route('reports.pdf') }}" target="_blank"
-                        class="btn btn-danger" onclick="this.form.target='_blank'">
-                        <i class="fas fa-file-pdf me-2"></i>تصدير PDF
-                    </button>
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <button type="submit" formaction="{{ route('reports.pdf') }}" target="_blank"
+                                class="btn btn-danger w-100" onclick="this.form.target='_blank'">
+                                <i class="fas fa-file-pdf me-1"></i>PDF
+                            </button>
+                        </div>
+                        <div class="col-6">
+                            <button type="submit" formaction="{{ route('reports.excel') }}"
+                                class="btn btn-success w-100" onclick="this.form.target='_blank'">
+                                <i class="fas fa-file-excel me-1"></i>Excel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {{-- معلومات سريعة --}}
+                <div class="card shadow-sm mt-3 border-0 bg-light">
+                    <div class="card-body py-2 px-3">
+                        <div class="small text-muted">
+                            <i class="fas fa-info-circle me-1 text-primary"></i>
+                            <strong>ملخص مقارن:</strong> يُظهر جدولاً واحداً يجمع كل الموظفين مع إجمالياتهم في الأعلى قبل التفاصيل.
+                        </div>
+                        <div class="small text-muted mt-1">
+                            <i class="fas fa-file-excel me-1 text-success"></i>
+                            <strong>Excel:</strong> يصدّر جدولاً بجميع البيانات لكل الموظفين المحددين.
+                        </div>
+                    </div>
                 </div>
 
             </div>
@@ -96,7 +127,7 @@
                 <div class="card shadow-sm h-100">
                     <div class="card-header py-2 d-flex justify-content-between align-items-center">
                         <span class="fw-semibold small"><i class="fas fa-users me-1 text-primary"></i>اختيار الموظفين</span>
-                        <div class="d-flex gap-2 align-items-center">
+                        <div class="d-flex gap-2 align-items-center flex-wrap">
                             {{-- فلتر بالقسم --}}
                             <select id="deptFilter" class="form-select form-select-sm" style="width:150px">
                                 <option value="">كل الأقسام</option>
@@ -118,7 +149,7 @@
 
                         <div id="empList">
                             @foreach($employees as $emp)
-                            <div class="emp-item d-flex align-items-center gap-2 p-2 rounded hover-bg mb-1"
+                            <div class="emp-item d-flex align-items-center gap-2 p-2 rounded mb-1"
                                  data-dept="{{ $emp->department_id }}"
                                  data-name="{{ strtolower($emp->name) }}"
                                  style="cursor:pointer; transition:background 0.15s"
@@ -156,7 +187,6 @@
 </div>
 
 <script>
-// ===== اختصارات التاريخ =====
 function setRange(range) {
     const today = new Date();
     const fmt = d => d.toISOString().split('T')[0];
@@ -179,7 +209,6 @@ function setRange(range) {
     document.getElementById('toDate').value   = fmt(to);
 }
 
-// ===== تحديد / إلغاء الكل =====
 function selectAll() {
     document.querySelectorAll('.emp-item:not([style*="none"]) .emp-check').forEach(c => c.checked = true);
     updateCount();
@@ -194,7 +223,6 @@ function toggleEmp(row) {
     updateCount();
 }
 
-// ===== فلتر بالقسم =====
 document.getElementById('deptFilter').addEventListener('change', function() {
     const val = this.value;
     document.querySelectorAll('.emp-item').forEach(item => {
@@ -203,7 +231,6 @@ document.getElementById('deptFilter').addEventListener('change', function() {
     updateCount();
 });
 
-// ===== بحث =====
 function filterEmployees() {
     const q = document.getElementById('empSearch').value.toLowerCase();
     const dept = document.getElementById('deptFilter').value;
@@ -214,7 +241,6 @@ function filterEmployees() {
     });
 }
 
-// ===== عداد التحديد =====
 function updateCount() {
     const n = document.querySelectorAll('.emp-check:checked').length;
     document.getElementById('selectionCount').textContent =
@@ -224,7 +250,6 @@ document.querySelectorAll('.emp-check').forEach(cb => {
     cb.addEventListener('change', updateCount);
 });
 
-// ===== التحقق قبل الإرسال =====
 document.getElementById('reportForm').addEventListener('submit', function(e) {
     const checked = document.querySelectorAll('.emp-check:checked').length;
     const sections = document.querySelectorAll('input[name="sections[]"]:checked').length;

@@ -46,9 +46,14 @@
     <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
             <span><i class="fas fa-users me-2"></i> قائمة الموظفين ({{ $employees->total() }})</span>
-            <a href="{{ route('employees.create') }}" class="btn btn-primary btn-sm">
-                <i class="fas fa-plus me-1"></i> إضافة موظف
-            </a>
+            <div class="d-flex gap-2">
+                <a href="{{ route('employees.export', request()->query()) }}" class="btn btn-success btn-sm">
+                    <i class="fas fa-file-excel me-1"></i> تصدير Excel
+                </a>
+                <a href="{{ route('employees.create') }}" class="btn btn-primary btn-sm">
+                    <i class="fas fa-plus me-1"></i> إضافة موظف
+                </a>
+            </div>
         </div>
         <div class="card-body p-0">
             <table class="table table-hover mb-0">

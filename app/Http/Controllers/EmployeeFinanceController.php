@@ -30,10 +30,27 @@ class EmployeeFinanceController extends Controller
         $employee->update(['opening_balance' => $newBalance]);
 
         // 2. تسجيل (أو تصفير) القيد في الـ Ledger
+        // Use the earliest existing non-opening-balance entry date minus one day so the
+        // opening_balance entry always sorts first in the ledger. Falls back to hire
+        // date, then a sentinel far-past date.
+        $earliestEntry = \App\Models\EmployeeLedger::where('employee_id', $employee->id)
+            ->where('entry_type', '!=', 'opening_balance')
+            ->where('entry_date', '>=', '2000-01-01')   // ignore corrupt 1899 dates
+            ->orderBy('entry_date')->orderBy('id')
+            ->first();
+
+        if ($earliestEntry) {
+            $openingDate = $earliestEntry->entry_date->copy()->subDay()->toDateString();
+        } elseif ($employee->hire_date && $employee->hire_date->year >= 2000) {
+            $openingDate = $employee->hire_date->copy()->subDay()->toDateString();
+        } else {
+            $openingDate = '2000-01-01';
+        }
+
         $this->ledger->recordOpeningBalance(
             $employee,
             $newBalance,
-            now()->toDateString(),
+            $openingDate,
             $data['notes'] ?? 'رصيد افتتاحي محدّث'
         );
 

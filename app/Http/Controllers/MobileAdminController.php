@@ -67,8 +67,16 @@ class MobileAdminController extends Controller
      * ===================================================== */
     public function approveBank(Employee $employee)
     {
+        // ربط bank_type بالـ bank_id المقابل في جدول banks
+        $bankTypeMap = [
+            'bank_of_palestine' => 2,
+            'pal_pay'           => 3,
+            'jawwal_pay'        => 4,
+        ];
+
         $employee->update([
             'bank_type'            => $employee->pending_bank_type,
+            'bank_id'              => $bankTypeMap[$employee->pending_bank_type] ?? $employee->bank_id,
             'account_name'         => $employee->pending_account_name,
             'bank_account'         => $employee->pending_bank_account,
             'pending_bank_type'    => null,

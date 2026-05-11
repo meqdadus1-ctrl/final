@@ -6,9 +6,11 @@ use App\Models\SalaryPayment;
 use App\Models\SalaryAdjustment;
 use App\Models\Employee;
 use App\Models\Loan;
+use App\Notifications\SalaryPaid;
 use App\Models\Attendance;
 use App\Services\LedgerService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
@@ -17,6 +19,15 @@ use Carbon\Carbon;
 class SalaryController extends Controller
 {
     public function __construct(private LedgerService $ledger) {}
+
+    private function normalizeFiscalPeriod(string $fp): string
+    {
+        // قبول W17-2026 وتحويلها إلى 2026-W17
+        if (preg_match('/^W(\d{1,2})-(\d{4})$/', trim($fp), $m)) {
+            return $m[2] . '-W' . str_pad($m[1], 2, '0', STR_PAD_LEFT);
+        }
+        return trim($fp);
+    }
 
     /* =====================================================
      *  INDEX — قائمة الرواتب
@@ -29,7 +40,7 @@ class SalaryController extends Controller
             $query->where('employee_id', $request->employee_id);
         }
         if ($request->filled('fiscal_period')) {
-            $query->where('fiscal_period', $request->fiscal_period);
+            $query->where('fiscal_period', $this->normalizeFiscalPeriod($request->fiscal_period));
         }
 
         /* ---- بحث نصي شامل ---- */
@@ -52,6 +63,76 @@ class SalaryController extends Controller
     }
 
     /* =====================================================
+     *  EXPORT — تصدير الرواتب CSV
+     * ===================================================== */
+    public function export(Request $request)
+    {
+        $query = SalaryPayment::with('employee.department')->latest();
+
+        if ($request->filled('employee_id')) {
+            $query->where('employee_id', $request->employee_id);
+        }
+        if ($request->filled('fiscal_period')) {
+            $query->where('fiscal_period', $this->normalizeFiscalPeriod($request->fiscal_period));
+        }
+        if ($request->filled('search')) {
+            $term = $request->search;
+            $query->where(function ($q) use ($term) {
+                $q->where('fiscal_period', 'like', "%{$term}%")
+                  ->orWhereHas('employee', function ($eq) use ($term) {
+                      $eq->where('name', 'like', "%{$term}%")
+                         ->orWhere('employee_number', 'like', "%{$term}%")
+                         ->orWhere('fingerprint_id', 'like', "%{$term}%");
+                  });
+            });
+        }
+
+        $payments = $query->get();
+        $filename = 'رواتب_' . now()->format('Y-m-d') . '.csv';
+
+        $headers = [
+            'Content-Type'        => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ];
+
+        $callback = function () use ($payments) {
+            $out = fopen('php://output', 'w');
+            fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
+            fputcsv($out, [
+                'رقم الموظف', 'الاسم', 'القسم', 'الفترة', 'من', 'إلى',
+                'ساعات العمل', 'الأجر/ساعة', 'الراتب الأساسي', 'أجر إضافي',
+                'خصم تأخر', 'خصم غياب', 'إضافات', 'خصومات', 'خصم سلفة',
+                'الراتب الصافي', 'طريقة الصرف', 'الحالة',
+            ]);
+            foreach ($payments as $p) {
+                fputcsv($out, [
+                    $p->employee->employee_number ?? '',
+                    $p->employee->name ?? '',
+                    $p->employee->department->name ?? '',
+                    $p->fiscal_period,
+                    $p->week_start,
+                    $p->week_end,
+                    $p->hours_worked,
+                    $p->hourly_rate,
+                    $p->salary_from_hours,
+                    $p->salary_from_overtime,
+                    $p->late_deduction,
+                    $p->absence_deduction,
+                    $p->manual_additions,
+                    $p->manual_deductions,
+                    $p->loan_deduction_amount,
+                    $p->net_salary,
+                    $p->payment_method,
+                    $p->status,
+                ]);
+            }
+            fclose($out);
+        };
+
+        return response()->stream($callback, 200, $headers);
+    }
+
+    /* =====================================================
      *  CREATE — نموذج احتساب الراتب
      * ===================================================== */
     public function create()
@@ -70,8 +151,6 @@ class SalaryController extends Controller
             'employee_id'       => 'required|exists:employees,id',
             'week_start'        => 'required|date',
             'week_end'          => 'required|date|after_or_equal:week_start',
-            'late_factor'       => 'required|numeric|min:0',
-            'late_grace'        => 'required|integer|min:0',
             'salary_multiplier' => 'required|numeric|min:0.01|max:10',
         ]);
 
@@ -93,29 +172,16 @@ class SalaryController extends Controller
         $hoursWorked   = (float) $attendances->sum('work_hours');
         $overtimeHours = (float) $attendances->sum('overtime_hours');
 
-        /* ---- حساب التأخير ---- */
-        $lateMinutes = 0;
-        foreach ($attendances as $att) {
-            if ($att->check_in && $att->status !== 'leave' && $employee->shift_start) {
-                $scheduledIn = Carbon::parse($att->date->toDateString() . ' ' . $employee->shift_start);
-                $actualIn    = Carbon::parse($att->date->toDateString() . ' ' . $att->check_in);
-                if ($actualIn->gt($scheduledIn)) {
-                    $late = $scheduledIn->diffInMinutes($actualIn);
-                    if ($late > $request->late_grace) {
-                        $lateMinutes += ($late - $request->late_grace);
-                    }
-                }
-            }
-        }
+        /* ---- التأخير (من سجلات الحضور مباشرة — للعرض فقط) ---- */
+        $lateMinutes = (int) $attendances->sum('late_minutes');
 
         /* ---- معامل الراتب ---- */
         $salaryMultiplier = (float) $request->salary_multiplier;
 
-        /* ---- حساب المبالغ ---- */
-        $overtimeRate  = (float) ($employee->overtime_rate ?? 1.5); // معامل الأوفرتايم من بيانات الموظف
-        $salaryA       = round($hoursWorked * $hourlyRate * $salaryMultiplier, 2);
-        $salaryB       = round($overtimeHours * $hourlyRate * $overtimeRate * $salaryMultiplier, 2);
-        $lateDeduction = round(($lateMinutes / 60) * $hourlyRate * $request->late_factor, 0);
+        /* ---- حساب المبالغ (تقريب لمنزلتين عشريتين) ---- */
+        $overtimeRate = (float) ($employee->overtime_rate ?? 1.5);
+        $salaryA      = round($hoursWorked * $hourlyRate * $salaryMultiplier, 2);
+        $salaryB      = round($overtimeHours * $hourlyRate * $overtimeRate * $salaryMultiplier, 2);
 
         /* ---- السلفة النشطة ---- */
         $activeLoan          = $employee->activeLoan;
@@ -140,9 +206,6 @@ class SalaryController extends Controller
             'overtimeHours'       => $overtimeHours,
             'overtimeRate'        => $overtimeRate,
             'lateMinutes'         => $lateMinutes,
-            'lateGrace'           => $request->late_grace,
-            'lateFactor'          => $request->late_factor,
-            'lateDeduction'       => $lateDeduction,
             'salaryA'             => $salaryA,
             'salaryB'             => $salaryB,
             'hourlyRate'          => $hourlyRate,
@@ -169,9 +232,8 @@ class SalaryController extends Controller
             'hours_worked'         => 'required|numeric|min:0',
             'overtime_hours'       => 'nullable|numeric|min:0',
             'late_minutes'         => 'nullable|numeric|min:0',
-            'late_deduction'       => 'nullable|numeric|min:0',
-            'late_factor'          => 'nullable|numeric|min:0',
             'absence_deduction'    => 'nullable|numeric|min:0',
+            'manual_additions'     => 'nullable|numeric|min:0',
             'manual_deductions'    => 'nullable|numeric|min:0',
             'loan_deduction_amount'=> 'nullable|numeric|min:0',
             'hourly_rate'          => 'required|numeric|min:0',
@@ -180,9 +242,6 @@ class SalaryController extends Controller
             'payment_method'       => 'required|in:bank,cash,deferred',
             'adjustment_ids'       => 'nullable|array',
             'adjustment_ids.*'     => 'exists:salary_adjustments,id',
-            'new_adj_type'         => 'nullable|in:bonus,expense,deduction,other',
-            'new_adj_amount'       => 'nullable|numeric|min:0.01',
-            'new_adj_reason'       => 'nullable|string|max:255',
             'balance_before'       => 'nullable|numeric',
         ]);
 
@@ -199,36 +258,12 @@ class SalaryController extends Controller
 
         $employee = Employee::findOrFail($request->employee_id);
 
-        /* ---- إضافة تعديل يدوي جديد إذا أُدخل ---- */
-        $newAdjId = null;
-        if ($request->filled('new_adj_type') && $request->filled('new_adj_amount') && $request->filled('new_adj_reason')) {
-            $adjSign = match($request->new_adj_type) {
-                'bonus', 'expense' => 1,
-                'deduction'        => -1,
-                'other'            => (int) ($request->new_adj_sign ?? -1),
-            };
-            $newAdj = SalaryAdjustment::create([
-                'employee_id'      => $employee->id,
-                'type'             => $request->new_adj_type,
-                'sign'             => $adjSign,
-                'amount'           => $request->new_adj_amount,
-                'adjustment_date'  => $request->week_end,
-                'reason'           => $request->new_adj_reason,
-                'status'           => 'pending',
-                'created_by'       => auth()->id(),
-            ]);
-            $newAdjId = $newAdj->id;
-        }
-
-        /* ---- جمع الـ adjustment IDs ---- */
-        $adjIds = array_filter(array_merge(
-            $request->adjustment_ids ?? [],
-            $newAdjId ? [$newAdjId] : []
-        ));
+        /* ---- الـ adjustment IDs المحددة ---- */
+        $adjIds = array_filter($request->adjustment_ids ?? []);
 
         /* ---- حساب الإضافات والخصومات من الـ adjustments ---- */
-        $manualAdditions  = 0;
-        $manualDeductions = 0;
+        $adjAdditions  = 0;
+        $adjDeductions = 0;
         if (!empty($adjIds)) {
             $adjs = SalaryAdjustment::whereIn('id', $adjIds)
                 ->where('employee_id', $employee->id)
@@ -236,30 +271,32 @@ class SalaryController extends Controller
                 ->get();
             foreach ($adjs as $adj) {
                 if ($adj->is_addition) {
-                    $manualAdditions += (float) $adj->amount;
+                    $adjAdditions += (float) $adj->amount;
                 } else {
-                    $manualDeductions += (float) $adj->amount;
+                    $adjDeductions += (float) $adj->amount;
                 }
             }
         }
 
-        /* ---- حساب الراتب ---- */
+        /* ---- إضافات يدوية مباشرة (من حقل الفورم) ---- */
+        $formAdditions = (float)($request->manual_additions ?? 0);
+        $manualAdditions  = $adjAdditions + $formAdditions;
+        $manualDeductions = $adjDeductions;
+
+        /* ---- حساب الراتب (تقريب لمنزلتين عشريتين) ---- */
         $salaryMultiplier = (float) $request->salary_multiplier;
         $overtimeRate     = (float) ($request->overtime_rate ?? $employee->overtime_rate ?? 1.5);
         $salaryA          = round((float)$request->hours_worked * (float)$request->hourly_rate * $salaryMultiplier, 2);
         $salaryB          = round((float)($request->overtime_hours ?? 0) * (float)$request->hourly_rate * $overtimeRate * $salaryMultiplier, 2);
-        $grossSalary      = round($salaryA + $salaryB + $manualAdditions, 0);
+        $grossSalary = $salaryA + $salaryB + round($manualAdditions, 2);
 
-        // خصومات الراتب: تأخير + غياب + يدوية + قسط السلفة
-        $salaryDeductions = (float)($request->late_deduction ?? 0)
-                          + (float)($request->absence_deduction ?? 0)
+        // خصومات الراتب: غياب + يدوية + قسط السلفة (التأخير محسوب ضمن ساعات العمل الفعلية)
+        $salaryDeductions = (float)($request->absence_deduction ?? 0)
                           + (float)($request->manual_deductions ?? 0)
                           + $manualDeductions
                           + (float)($request->loan_deduction_amount ?? 0);
 
-        $totalDeductions = $salaryDeductions;
-
-        $netSalary = round(max(0, $grossSalary - $salaryDeductions), 0);
+        $netSalary = (int) round(max(0, $grossSalary - $salaryDeductions));
 
         /* ---- حفظ الـ SalaryPayment ---- */
         $paymentData = [
@@ -271,8 +308,7 @@ class SalaryController extends Controller
             'hourly_rate'           => (float)$request->hourly_rate,
             'salary_multiplier'     => $salaryMultiplier,
             'late_minutes'          => (int)($request->late_minutes ?? 0),
-            'late_deduction'        => (float)($request->late_deduction ?? 0),
-            'late_factor'           => (float)($request->late_factor ?? 1),
+            'late_deduction'        => 0,
             'absence_deduction'     => (float)($request->absence_deduction ?? 0),
             'manual_additions'      => $manualAdditions,
             'manual_deductions'     => (float)($request->manual_deductions ?? 0) + $manualDeductions,
@@ -369,6 +405,12 @@ class SalaryController extends Controller
             }
         }
 
+        if ($employee->user && $employee->user->email) {
+            try {
+                $employee->user->notify(new SalaryPaid($payment));
+            } catch (\Throwable) {}
+        }
+
         return redirect()->route('salary.index')
             ->with('success', "✅ تم حفظ راتب {$employee->name} بنجاح.");
     }
@@ -428,7 +470,7 @@ class SalaryController extends Controller
                              + (float) $salary->absence_deduction
                              + $newDeductions
                              + (float) $salary->loan_deduction_amount;
-            $netSalary       = round(max(0, $grossSalary - $totalDeductions), 0);
+            $netSalary       = (int) round(max(0, $grossSalary - $totalDeductions));
 
             $salary->update([
                 'notes'            => $request->notes,
@@ -469,11 +511,13 @@ class SalaryController extends Controller
         $employeeId   = $salary->employee_id;
         $employeeName = $salary->employee?->name;
 
-        // حذف القيود المحاسبية + إعادة الحساب عبر الخدمة المركزية
-        $this->ledger->deleteSalaryEntries($salary);
+        DB::transaction(function () use ($salary) {
+            // حذف القيود المحاسبية + إعادة الحساب عبر الخدمة المركزية
+            $this->ledger->deleteSalaryEntries($salary);
 
-        // حذف الراتب
-        $salary->delete();
+            // حذف الراتب
+            $salary->delete();
+        });
 
         return redirect()->route('salary.index')
             ->with('success', "تم حذف راتب {$employeeName} وتحديث كشف الحساب");

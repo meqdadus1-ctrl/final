@@ -92,6 +92,8 @@ Route::middleware(['auth'])->group(function () {
         Route::delete('/documents/{document}',        [EmployeeProfileController::class, 'deleteDocument'])->name('documents.delete');
         Route::post('/{employee}/promotions',         [EmployeeProfileController::class, 'addPromotion'])->name('promotions.store');
         Route::delete('/promotions/{promotion}',      [EmployeeProfileController::class, 'deletePromotion'])->name('promotions.delete');
+        Route::post('/{employee}/job-duties',         [EmployeeProfileController::class, 'storeJobDuty'])->name('job-duties.store');
+        Route::delete('/job-duties/{duty}',           [EmployeeProfileController::class, 'deleteJobDuty'])->name('job-duties.delete');
 
         // ===== الرصيد الافتتاحي =====
         Route::post('/{employee}/opening-balance',             [EmployeeFinanceController::class, 'updateOpeningBalance'])->name('opening-balance.update');
@@ -111,6 +113,7 @@ Route::middleware(['auth'])->group(function () {
     // ===== الحضور =====
     Route::post('attendance/import-excel',       [AttendanceController::class, 'importExcel'])->middleware('permission:attendance.create')->name('attendance.import.excel');
     Route::get('attendance/export-by-employee',  [AttendanceController::class, 'exportByEmployee'])->middleware('permission:attendance.view')->name('attendance.export.employee');
+    Route::get('attendance/export-shift-hours',  [AttendanceController::class, 'exportShiftHours'])->middleware('permission:attendance.view')->name('attendance.export.shift');
     Route::get('attendance/pull-device',         [AttendanceController::class, 'pullDevicePage'])->middleware('permission:attendance.create')->name('attendance.pull.page');
     Route::post('attendance/pull-device',        [AttendanceController::class, 'pullFromDevice'])->middleware('permission:attendance.create')->name('attendance.pull');
     Route::post('attendance/ping-device',        [AttendanceController::class, 'pingDevice'])->middleware('permission:attendance.create')->name('attendance.ping');
@@ -139,6 +142,7 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/calculate',                [SalaryController::class, 'calculate'])->middleware('permission:payslips.create')->name('calculate');
         Route::get('/calculate',                 fn() => redirect()->route('salary.create'));
         Route::post('/',                         [SalaryController::class, 'store'])->middleware('permission:payslips.create')->name('store');
+        Route::get('/thermal-batch',             [SalaryController::class, 'thermalBatch'])->middleware('permission:payslips.view')->name('thermal.batch');
         Route::get('/{salary}',                  [SalaryController::class, 'show'])->middleware('permission:payslips.view')->name('show');
         Route::get('/{salary}/thermal',          [SalaryController::class, 'thermal'])->middleware('permission:payslips.view')->name('thermal');
         Route::get('/{salary}/edit',             [SalaryController::class, 'edit'])->middleware('permission:payslips.edit')->name('edit');

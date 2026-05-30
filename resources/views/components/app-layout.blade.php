@@ -22,11 +22,45 @@
         .btn-primary { background: #1e3a5f; border-color: #1e3a5f; }
         .btn-primary:hover { background: #2d5a8e; border-color: #2d5a8e; }
         .table th { background: #f8f9fa; font-weight: 600; font-size: 13px; }
+
+        /* ── Sidebar Overlay ── */
+        .sidebar-overlay {
+            display: none;
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,.5);
+            z-index: 1040;
+        }
+        .sidebar-overlay.show { display: block; }
+
+        /* ── Mobile Toggle Button ── */
+        .sidebar-toggle {
+            display: none;
+            background: none; border: none;
+            color: #1e3a5f; font-size: 22px;
+            padding: 0 8px 0 0; cursor: pointer;
+            line-height: 1;
+        }
+
+        /* ── Responsive ── */
+        @media (max-width: 991.98px) {
+            .sidebar {
+                transform: translateX(100%);
+                transition: transform .28s ease;
+                z-index: 1045;
+            }
+            .sidebar.sidebar-open { transform: translateX(0); }
+            .main-content { margin-right: 0 !important; }
+            .sidebar-toggle { display: inline-flex; align-items: center; }
+            .card-body { overflow-x: auto; }
+        }
     </style>
 </head>
 <body>
+    <!-- Sidebar Overlay (mobile) -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
     <!-- Sidebar -->
-    <div class="sidebar">
+    <div class="sidebar" id="mainSidebar">
         <div class="logo">
             <i class="fas fa-building fa-2x text-white mb-2"></i>
             <h5>نظام الموارد البشرية</h5>
@@ -114,6 +148,9 @@
     <!-- Main Content -->
     <div class="main-content">
         <div class="topbar">
+            <button class="sidebar-toggle" id="sidebarToggle" aria-label="القائمة">
+                <i class="fas fa-bars"></i>
+            </button>
             <span class="fw-bold">{{ $title ?? 'لوحة التحكم' }}</span>
             <span class="text-muted me-auto ms-3">مرحباً، {{ auth()->user()->name }}</span>
         </div>
@@ -133,5 +170,26 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        (function () {
+            var sidebar  = document.getElementById('mainSidebar');
+            var overlay  = document.getElementById('sidebarOverlay');
+            var toggle   = document.getElementById('sidebarToggle');
+
+            function openSidebar()  { sidebar.classList.add('sidebar-open');    overlay.classList.add('show'); }
+            function closeSidebar() { sidebar.classList.remove('sidebar-open'); overlay.classList.remove('show'); }
+
+            toggle.addEventListener('click', function () {
+                sidebar.classList.contains('sidebar-open') ? closeSidebar() : openSidebar();
+            });
+            overlay.addEventListener('click', closeSidebar);
+
+            sidebar.querySelectorAll('.nav-link').forEach(function (link) {
+                link.addEventListener('click', function () {
+                    if (window.innerWidth < 992) closeSidebar();
+                });
+            });
+        })();
+    </script>
 </body>
 </html>

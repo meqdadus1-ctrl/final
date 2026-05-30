@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\{Employee, EmployeeDocument, EmployeePromotion, Department, Bank};
+use App\Models\{Employee, EmployeeDocument, EmployeePromotion, EmployeeJobDuty, Department, Bank};
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{Auth, Storage};
 
@@ -22,6 +22,7 @@ class EmployeeProfileController extends Controller
             'promotions.toDepartment',
             'promotions.approver',
             'activeLoan',
+            'jobDuties',
             'salaryPayments' => fn($q) => $q->orderByDesc('payment_date')->limit(20),
         ]);
 
@@ -174,10 +175,11 @@ class EmployeeProfileController extends Controller
         $updates = [];
         if ($data['to_title'])         $updates['job_title']      = $data['to_title'];
         if ($data['to_department_id']) $updates['department_id']  = $data['to_department_id'];
-        if ($data['to_salary'])        $updates['salary']         = $data['to_salary'];
+        if ($data['to_salary'])        $updates['hourly_rate']    = $data['to_salary'];
         if ($updates) $employee->update($updates);
 
-        return back()->with('success', 'تم تسجيل الحركة الوظيفية بنجاح.');
+        return redirect(route('employees.profile', $employee) . '#history')
+            ->with('success', 'تم تسجيل الحركة الوظيفية بنجاح.');
     }
 
     /* =====================================================
@@ -185,8 +187,39 @@ class EmployeeProfileController extends Controller
      * ===================================================== */
     public function deletePromotion(EmployeePromotion $promotion)
     {
+        $employeeId = $promotion->employee_id;
         $promotion->delete();
-        return back()->with('success', 'تم حذف السجل.');
+        return redirect(route('employees.profile', $employeeId) . '#history')
+            ->with('success', 'تم حذف السجل.');
+    }
+
+    /* =====================================================
+     *  STORE JOB DUTY – POST /employees/{employee}/job-duties
+     * ===================================================== */
+    public function storeJobDuty(Request $request, Employee $employee)
+    {
+        $request->validate([
+            'title' => 'required|string|max:500',
+        ]);
+
+        $maxOrder = $employee->jobDuties()->max('sort_order') ?? 0;
+
+        EmployeeJobDuty::create([
+            'employee_id' => $employee->id,
+            'title'       => $request->title,
+            'sort_order'  => $maxOrder + 1,
+        ]);
+
+        return back()->with('success', 'تم إضافة المهمة الوظيفية بنجاح.');
+    }
+
+    /* =====================================================
+     *  DELETE JOB DUTY – DELETE /employees/job-duties/{duty}
+     * ===================================================== */
+    public function deleteJobDuty(EmployeeJobDuty $duty)
+    {
+        $duty->delete();
+        return back()->with('success', 'تم حذف المهمة الوظيفية.');
     }
 
     /* ---------- Helper ---------- */

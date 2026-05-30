@@ -15,6 +15,30 @@ class AttendanceController extends Controller
     // عرض قائمة الحضور
     public function index(Request $request)
     {
+        $filterKeys = ['date_from', 'date_to', 'date', 'employee_id', 'status'];
+
+        // زر "إلغاء الفلتر" — امسح الجلسة وارجع لصفحة نظيفة
+        if ($request->boolean('reset')) {
+            session()->forget('attendance_filters');
+            return redirect()->route('attendance.index');
+        }
+
+        // إذا ضغط المستخدم "بحث" (الفورم يرسل searched=1)
+        if ($request->has('searched')) {
+            $filters = array_filter($request->only($filterKeys));
+            if (!empty($filters)) {
+                session(['attendance_filters' => $filters]);
+            } else {
+                session()->forget('attendance_filters');
+            }
+        } elseif (session()->has('attendance_filters')) {
+            // لا فلتر في الرابط ولا "بحث" → استعد الفلتر المحفوظ
+            session()->reflash(); // احتفظ بـ flash messages (success/error)
+            return redirect()->route('attendance.index',
+                session('attendance_filters') + ['searched' => 1]
+            );
+        }
+
         $query = Attendance::with('employee');
 
         if ($request->filled('date_from')) {
@@ -26,18 +50,14 @@ class AttendanceController extends Controller
         if ($request->filled('date')) {
             $query->whereDate('date', $request->date);
         }
-
-        // فلتر بالموظف
-        if ($request->employee_id) {
+        if ($request->filled('employee_id')) {
             $query->where('employee_id', $request->employee_id);
         }
-
-        // فلتر بالحالة
-        if ($request->status) {
+        if ($request->filled('status')) {
             $query->where('status', $request->status);
         }
 
-        $attendances = $query->orderByDesc('date')->paginate(20);
+        $attendances = $query->orderByDesc('date')->paginate(20)->appends($request->query());
         $employees   = Employee::active()->get();
 
         return view('attendance.index', compact('attendances', 'employees'));
@@ -446,8 +466,6 @@ PYEOF
                 $date = $carbon->toDateString();
                 $time = $carbon->format('H:i:s');
 
-                // الجمعة = إجازة
-                if ($carbon->dayOfWeek === \Carbon\Carbon::FRIDAY) continue;
 
                 if (!isset($grouped[$fingerprintId][$date])) {
                     $grouped[$fingerprintId][$date] = [];
@@ -635,10 +653,6 @@ PYEOF
                 $time = $logTime->format('H:i:s');
                 $type = isset($log['type']) ? (int) $log['type'] : -1;
 
-                // الجمعة = إجازة، نتجاهل سجلاتها
-                if ($logTime->dayOfWeek === \Carbon\Carbon::FRIDAY) {
-                    continue;
-                }
 
                 if (!isset($grouped[$employee->id][$date])) {
                     $grouped[$employee->id][$date] = [
@@ -830,35 +844,97 @@ PYEOF
         $writer->close();
     }
 
+    public function exportShiftHours(Request $request)
+    {
+        $query = Employee::with(['attendances' => function ($q) use ($request) {
+            if ($request->filled('date_from')) {
+                $q->whereDate('date', '>=', $request->date_from);
+            }
+            if ($request->filled('date_to')) {
+                $q->whereDate('date', '<=', $request->date_to);
+            }
+        }])->orderBy('name');
+
+        if ($request->filled('employee_id')) {
+            $query->where('id', $request->employee_id);
+        }
+
+        $employees = $query->get();
+
+        $boldStyle  = new \OpenSpout\Common\Entity\Style\Style(fontBold: true);
+        $totalStyle = new \OpenSpout\Common\Entity\Style\Style(fontBold: true, backgroundColor: 'C6EFCE');
+
+        $writer = new \OpenSpout\Writer\XLSX\Writer();
+        $writer->openToBrowser('shift_hours.xlsx');
+
+        $writer->addRow(\OpenSpout\Common\Entity\Row::fromValuesWithStyle(
+            ['اسم الموظف', 'بداية الوردية', 'نهاية الوردية', 'إجمالي ساعات العمل', 'إجمالي الأوفرتايم', 'أيام الحضور'],
+            $boldStyle
+        ));
+
+        foreach ($employees as $employee) {
+            $att           = $employee->attendances;
+            $totalHours    = round($att->sum('work_hours'), 2);
+            $totalOvertime = round($att->sum('overtime_hours'), 2);
+            $presentDays   = $att->whereIn('status', ['present', 'late'])->count();
+
+            $writer->addRow(\OpenSpout\Common\Entity\Row::fromValuesWithStyle([
+                $employee->name,
+                $employee->shift_start ? substr($employee->shift_start, 0, 5) : '—',
+                $employee->shift_end   ? substr($employee->shift_end, 0, 5)   : '—',
+                $totalHours,
+                $totalOvertime,
+                $presentDays,
+            ], $totalStyle));
+        }
+
+        $writer->close();
+    }
+
     // يحسب ساعات العمل والأوفرتايم مع دعم وردية الليل (checkout < checkin)
+    // work_hours    = إجمالي الوقت من الدخول إلى الخروج
+    // overtimeHours = الوقت بعد نهاية الوردية الفعلية (مع تعديل التأخير)
+    //               = كامل ساعات العمل إذا كان اليوم جمعة (يوم إضافي بالكامل)
     private function calcWorkStats(string $date, string $checkIn, ?string $checkOut, ?string $shiftStart, ?string $shiftEnd): array
     {
         if (!$checkOut) return [0, 0];
 
         $inTs  = strtotime("$date $checkIn");
         $outTs = strtotime("$date $checkOut");
-        if ($outTs <= $inTs) $outTs += 86400;
+        if ($outTs <= $inTs) $outTs += 86400; // وردية ليل تعبر منتصف الليل
         $workHours = round(($outTs - $inTs) / 3600, 2);
 
-        $shiftHours = 8.0;
-        if ($shiftStart && $shiftEnd) {
-            $ssTs = strtotime("$date $shiftStart");
+        $overtimeHours = 0.0;
+        if ($shiftEnd) {
             $seTs = strtotime("$date $shiftEnd");
-            if ($seTs <= $ssTs) $seTs += 86400;
-            $shiftHours = max(1, round(($seTs - $ssTs) / 3600, 2));
+            if ($shiftStart) {
+                $ssTs = strtotime("$date $shiftStart");
+                if ($seTs <= $ssTs) $seTs += 86400; // نهاية الوردية في اليوم التالي
+                // الأوفرتايم يبدأ عند: نهاية الوردية أو (وقت الدخول + مدة الوردية) أيهما أحدث
+                // هذا يعني: من جاء متأخراً يحتاج يكمل مدة وردياته كاملاً أولاً
+                // ومن جاء في يوم إضافي (كالجمعة) لا يُحتسب أوفرتايم إلا بعد 8 ساعات فعلية
+                $shiftDuration     = $seTs - $ssTs;
+                $effectiveShiftEnd = max($seTs, $inTs + $shiftDuration);
+            } else {
+                if ($seTs < $inTs) $seTs += 86400;
+                $effectiveShiftEnd = $seTs;
+            }
+            $overtimeHours = $outTs > $effectiveShiftEnd
+                ? round(($outTs - $effectiveShiftEnd) / 3600, 2)
+                : 0.0;
         }
 
-        $overtimeHours = $workHours > $shiftHours ? round($workHours - $shiftHours, 2) : 0;
         return [$workHours, $overtimeHours];
     }
 
-    // يحسب دقائق التأخير (صفر إذا لا يوجد وردية أو جاء في الوقت)
+    // يحسب دقائق التأخير — الجمعة يوم إضافي فلا تأخير فيها
     private function calcLateMinutes(string $date, string $checkIn, ?string $shiftStart): int
     {
         if (!$shiftStart) return 0;
+        if ((int) date('w', strtotime($date)) === 5) return 0;
         $scheduledIn = strtotime("$date $shiftStart");
         $actualIn    = strtotime("$date $checkIn");
-        if ($actualIn > $scheduledIn + 300) {
+        if ($actualIn > $scheduledIn) {
             return (int) round(($actualIn - $scheduledIn) / 60);
         }
         return 0;

@@ -113,17 +113,17 @@ class LedgerService
             $salaryMultiplier = (float)($payment->salary_multiplier ?? 1);
             $overtimeRate     = (float)($payment->overtime_rate ?? $emp->overtime_rate ?? 1.5);
 
-            // 1. راتب ساعات العمل (مع تطبيق معامل الراتب)
+            // 1. راتب الساعات العادية
+            // نُعيد دقائق التأخير للساعات — الخصم يتم عبر deduction_late فقط (لا مزدوج)
             if ($payment->gross_salary - ($payment->manual_additions ?? 0) > 0) {
-                $baseSalary = round(
-                    $payment->hours_worked * (float)($payment->hourly_rate ?? 0) * $salaryMultiplier,
-                    2
-                );
+                $adjustedHours = (float)$payment->hours_worked + ((int)$payment->late_minutes / 60);
+                $regularHours  = max(0.0, $adjustedHours - (float)($payment->overtime_hours ?? 0));
+                $baseSalary    = round($regularHours * (float)($payment->hourly_rate ?? 0) * $salaryMultiplier, 2);
                 if ($baseSalary > 0) {
                     $multiplierNote = $salaryMultiplier != 1 ? " × {$salaryMultiplier}" : '';
                     $this->addEntry(
                         $emp->id, 'salary', $baseSalary, 0,
-                        "راتب أسبوعي — {$payment->hours_worked} ساعة × " . number_format($payment->hourly_rate ?? 0, 4) . " ₪{$multiplierNote}",
+                        "راتب أسبوعي — " . number_format($regularHours, 2) . " ساعة × " . number_format($payment->hourly_rate ?? 0, 4) . " ₪{$multiplierNote}",
                         $paymentDate, $periodOpts
                     );
                 }

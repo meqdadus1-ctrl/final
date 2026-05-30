@@ -8,7 +8,13 @@
             <h4 class="mb-0 fw-bold">💰 الرواتب الأسبوعية</h4>
             <small class="text-muted">نظام الرواتب مع كشف الحساب</small>
         </div>
-        <div class="d-flex gap-2">
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+            <button id="btn-thermal-batch"
+                onclick="openBatchPrint()"
+                class="btn btn-dark btn-sm d-none">
+                <i class="fas fa-print me-1"></i>
+                طباعة المحدد (<span id="selected-count">0</span>)
+            </button>
             <a href="{{ route('salary.adjustments') }}" class="btn btn-outline-secondary btn-sm">
                 <i class="fas fa-sliders-h me-1"></i> التعديلات
             </a>
@@ -70,6 +76,10 @@
                 <table class="table table-hover align-middle mb-0">
                     <thead class="table-dark">
                         <tr>
+                            <th class="px-3" style="width:36px;">
+                                <input type="checkbox" id="check-all" title="تحديد الكل"
+                                    style="width:16px;height:16px;cursor:pointer;">
+                            </th>
                             <th class="px-3">الموظف</th>
                             <th>الفترة</th>
                             <th class="text-center">ساعات العمل</th>
@@ -85,6 +95,10 @@
                     <tbody>
                         @forelse($payments as $p)
                         <tr>
+                            <td class="px-3">
+                                <input type="checkbox" class="slip-check" value="{{ $p->id }}"
+                                    style="width:16px;height:16px;cursor:pointer;">
+                            </td>
                             <td class="px-3">
                                 <div class="fw-semibold">{{ $p->employee?->name ?? '—' }}</div>
                                 <small class="text-muted">{{ $p->employee?->department?->name ?? '—' }}</small>
@@ -135,7 +149,7 @@
                         </tr>
                         @empty
                         <tr>
-                            <td colspan="10" class="text-center py-5 text-muted">لا توجد رواتب بعد</td>
+                            <td colspan="11" class="text-center py-5 text-muted">لا توجد رواتب بعد</td>
                         </tr>
                         @endforelse
                     </tbody>
@@ -147,4 +161,34 @@
         @endif
     </div>
 </div>
+<script>
+    const checkAll  = document.getElementById('check-all');
+    const btn       = document.getElementById('btn-thermal-batch');
+    const countSpan = document.getElementById('selected-count');
+
+    function updateBatchBtn() {
+        const checked = document.querySelectorAll('.slip-check:checked');
+        const n = checked.length;
+        countSpan.textContent = n;
+        btn.classList.toggle('d-none', n === 0);
+    }
+
+    checkAll.addEventListener('change', () => {
+        document.querySelectorAll('.slip-check').forEach(cb => cb.checked = checkAll.checked);
+        updateBatchBtn();
+    });
+
+    document.querySelectorAll('.slip-check').forEach(cb => {
+        cb.addEventListener('change', () => {
+            checkAll.checked = [...document.querySelectorAll('.slip-check')].every(c => c.checked);
+            updateBatchBtn();
+        });
+    });
+
+    function openBatchPrint() {
+        const ids = [...document.querySelectorAll('.slip-check:checked')].map(c => c.value).join(',');
+        if (!ids) return;
+        window.open('{{ route('salary.thermal.batch') }}?ids=' + ids, '_blank');
+    }
+</script>
 </x-app-layout>

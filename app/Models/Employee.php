@@ -3,7 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\{BelongsTo, HasMany, HasOne};
+use Illuminate\Database\Eloquent\Relations\{BelongsTo, HasMany, HasOne, HasManyThrough};
 use App\Models\EmployeeLedger;
 use App\Models\SalaryAdjustment;
 use Carbon\Carbon;
@@ -140,6 +140,11 @@ class Employee extends Model
     public function ledger(): HasMany
     {
         return $this->hasMany(EmployeeLedger::class)->orderBy('entry_date')->orderBy('id');
+    }
+
+    public function jobDuties(): HasMany
+    {
+        return $this->hasMany(EmployeeJobDuty::class)->orderBy('sort_order')->orderBy('id');
     }
 
     public function adjustments(): HasMany

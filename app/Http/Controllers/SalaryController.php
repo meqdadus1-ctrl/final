@@ -161,27 +161,28 @@ class SalaryController extends Controller
         /* ---- أجر الساعة ---- */
         [$hourlyRate, $shiftHoursPerDay] = $this->resolveHourlyRate($employee);
 
-        /* ---- سجلات الحضور (بدون الجمعة) ---- */
+        /* ---- سجلات الحضور ---- */
         $attendances = Attendance::where('employee_id', $employee->id)
             ->whereBetween('date', [$weekStart->toDateString(), $weekEnd->toDateString()])
-            ->whereRaw('DAYOFWEEK(date) != 6')
             ->orderBy('date')
             ->get();
 
         /* ---- حساب الساعات ---- */
-        $hoursWorked   = (float) $attendances->sum('work_hours');
-        $overtimeHours = (float) $attendances->sum('overtime_hours');
-
-        /* ---- التأخير (من سجلات الحضور مباشرة — للعرض فقط) ---- */
+        $hoursWorked = (float) $attendances->sum('work_hours');
+        $workDays    = $attendances->count();
         $lateMinutes = (int) $attendances->sum('late_minutes');
 
         /* ---- معامل الراتب ---- */
         $salaryMultiplier = (float) $request->salary_multiplier;
 
-        /* ---- حساب المبالغ (تقريب لمنزلتين عشريتين) ---- */
-        $overtimeRate = (float) ($employee->overtime_rate ?? 1.5);
-        $salaryA      = round($hoursWorked * $hourlyRate * $salaryMultiplier, 2);
-        $salaryB      = round($overtimeHours * $hourlyRate * $overtimeRate * $salaryMultiplier, 2);
+        /* ---- الأوفرتايم = إجمالي العمل − (أيام الدوام × ساعات الوردية) ---- */
+        $overtimeRate   = (float) ($employee->overtime_rate ?? 1.5);
+        $scheduledHours = round($shiftHoursPerDay * $workDays, 2);
+        $overtimeHours  = max(0.0, round($hoursWorked - $scheduledHours, 2));
+        $regularHours   = round($hoursWorked - $overtimeHours, 2);
+        $salaryA        = round($regularHours * $hourlyRate * $salaryMultiplier, 2);
+        $salaryB        = round($overtimeHours * $hourlyRate * $overtimeRate * $salaryMultiplier, 2);
+        $lateDeduction  = 0.0;
 
         /* ---- السلفة النشطة ---- */
         $activeLoan          = $employee->activeLoan;
@@ -203,9 +204,14 @@ class SalaryController extends Controller
             'weekEnd'             => $weekEnd->toDateString(),
             'fiscalPeriod'        => $weekStart->format('Y-\WW'),
             'hoursWorked'         => $hoursWorked,
+            'regularHours'        => $regularHours,
             'overtimeHours'       => $overtimeHours,
             'overtimeRate'        => $overtimeRate,
             'lateMinutes'         => $lateMinutes,
+            'lateFactor'          => 0,
+            'lateDeduction'       => $lateDeduction,
+            'scheduledHours'      => $scheduledHours,
+            'shiftHoursPerDay'    => round($shiftHoursPerDay, 1),
             'salaryA'             => $salaryA,
             'salaryB'             => $salaryB,
             'hourlyRate'          => $hourlyRate,
@@ -233,6 +239,7 @@ class SalaryController extends Controller
             'overtime_hours'       => 'nullable|numeric|min:0',
             'late_minutes'         => 'nullable|numeric|min:0',
             'absence_deduction'    => 'nullable|numeric|min:0',
+            'late_factor'          => 'nullable|numeric|min:0|max:10',
             'manual_additions'     => 'nullable|numeric|min:0',
             'manual_deductions'    => 'nullable|numeric|min:0',
             'loan_deduction_amount'=> 'nullable|numeric|min:0',
@@ -286,12 +293,22 @@ class SalaryController extends Controller
         /* ---- حساب الراتب (تقريب لمنزلتين عشريتين) ---- */
         $salaryMultiplier = (float) $request->salary_multiplier;
         $overtimeRate     = (float) ($request->overtime_rate ?? $employee->overtime_rate ?? 1.5);
-        $salaryA          = round((float)$request->hours_worked * (float)$request->hourly_rate * $salaryMultiplier, 2);
-        $salaryB          = round((float)($request->overtime_hours ?? 0) * (float)$request->hourly_rate * $overtimeRate * $salaryMultiplier, 2);
-        $grossSalary = $salaryA + $salaryB + round($manualAdditions, 2);
+        $lateMinutes      = (int) ($request->late_minutes ?? 0);
 
-        // خصومات الراتب: غياب + يدوية + قسط السلفة (التأخير محسوب ضمن ساعات العمل الفعلية)
-        $salaryDeductions = (float)($request->absence_deduction ?? 0)
+        // الأوفرتايم = إجمالي العمل − (أيام الدوام × ساعات الوردية من الفورم)
+        $hoursWorked      = (float) $request->hours_worked;
+        $scheduledHours   = (float) ($request->scheduled_hours ?? 0);
+        $overtimeHours    = $scheduledHours > 0
+            ? max(0.0, round($hoursWorked - $scheduledHours, 2))
+            : max(0.0, (float)($request->overtime_hours ?? 0));
+        $regularHours     = round($hoursWorked - $overtimeHours, 2);
+        $salaryA          = round($regularHours * (float)$request->hourly_rate * $salaryMultiplier, 2);
+        $salaryB          = round($overtimeHours * (float)$request->hourly_rate * $overtimeRate * $salaryMultiplier, 2);
+        $lateDeduction    = 0.0;
+        $grossSalary      = $salaryA + $salaryB + round($manualAdditions, 2);
+
+        $salaryDeductions = $lateDeduction
+                          + (float)($request->absence_deduction ?? 0)
                           + (float)($request->manual_deductions ?? 0)
                           + $manualDeductions
                           + (float)($request->loan_deduction_amount ?? 0);
@@ -307,8 +324,8 @@ class SalaryController extends Controller
             'overtime_hours'        => (float)($request->overtime_hours ?? 0),
             'hourly_rate'           => (float)$request->hourly_rate,
             'salary_multiplier'     => $salaryMultiplier,
-            'late_minutes'          => (int)($request->late_minutes ?? 0),
-            'late_deduction'        => 0,
+            'late_minutes'          => $lateMinutes,
+            'late_deduction'        => $lateDeduction,
             'absence_deduction'     => (float)($request->absence_deduction ?? 0),
             'manual_additions'      => $manualAdditions,
             'manual_deductions'     => (float)($request->manual_deductions ?? 0) + $manualDeductions,
@@ -485,6 +502,7 @@ class SalaryController extends Controller
 
             // حذف القيود القديمة + إعادة بنائها
             $this->ledger->deleteSalaryEntries($salary);
+            $salary->update(['balance_before' => $this->ledger->getCurrentBalance($salary->employee_id)]);
             $this->ledger->recordSalaryPayment($salary);
         } else {
             $salary->update([
@@ -495,6 +513,7 @@ class SalaryController extends Controller
             // إذا تغيرت طريقة الدفع فقط → أعد بناء القيود لتحديث قيد الدفع
             if ($request->payment_method !== $oldMethod) {
                 $this->ledger->deleteSalaryEntries($salary);
+                $salary->update(['balance_before' => $this->ledger->getCurrentBalance($salary->employee_id)]);
                 $this->ledger->recordSalaryPayment($salary);
             }
         }
@@ -524,6 +543,29 @@ class SalaryController extends Controller
     }
 
     /* =====================================================
+     *  THERMAL BATCH — طباعة حرارية متعددة
+     * ===================================================== */
+    public function thermalBatch(Request $request)
+    {
+        $ids = array_values(array_filter(array_map('intval', explode(',', $request->query('ids', '')))));
+
+        if (empty($ids)) {
+            return redirect()->route('salary.index')->with('info', 'لم يتم تحديد أي راتب للطباعة.');
+        }
+
+        $salaries = SalaryPayment::with('employee.department')
+            ->whereIn('id', $ids)
+            ->orderByRaw('FIELD(id, ' . implode(',', $ids) . ')')
+            ->get();
+
+        $ledgerBalances = $salaries->mapWithKeys(
+            fn($s) => [$s->id => $this->ledger->getCurrentBalance($s->employee_id)]
+        );
+
+        return view('salary.thermal-batch', compact('salaries', 'ledgerBalances'));
+    }
+
+    /* =====================================================
      *  THERMAL PRINT — طباعة حرارية
      * ===================================================== */
     public function thermal(SalaryPayment $salary)
@@ -535,7 +577,9 @@ class SalaryController extends Controller
             ->orderBy('id')
             ->get();
 
-        return view('salary.thermal', compact('salary', 'ledgerEntries'));
+        $currentBalance = $this->ledger->getCurrentBalance($salary->employee_id);
+
+        return view('salary.thermal', compact('salary', 'ledgerEntries', 'currentBalance'));
     }
 
     /* =====================================================
@@ -621,12 +665,7 @@ class SalaryController extends Controller
      */
     private function resolveHourlyRate(Employee $employee): array
     {
-        if ($employee->salary_type === 'hourly') {
-            return [(float)$employee->hourly_rate, 8.0];
-        }
-
-        // راتب ثابت → نحوله لأجر ساعة
-        // الأسبوع = 6 أيام عمل (خميس إلى أربعاء بدون جمعة)
+        // ساعات الوردية من بروفايل الموظف (تنطبق على جميع أنواع الرواتب)
         $shiftHours = 8.0;
         if ($employee->shift_start && $employee->shift_end) {
             $in  = Carbon::parse($employee->shift_start);
@@ -634,6 +673,12 @@ class SalaryController extends Controller
             $shiftHours = max(1, $in->diffInMinutes($out) / 60);
         }
 
+        if ($employee->salary_type === 'hourly') {
+            return [(float)$employee->hourly_rate, $shiftHours];
+        }
+
+        // راتب ثابت → نحوله لأجر ساعة
+        // الأسبوع = 6 أيام أساسية (الجمعة يوم إضافي لا يدخل في الراتب الأساسي)
         $weeklyHours = $shiftHours * 6;
         $weeklyRate  = ($employee->base_salary ?? $employee->salary ?? 0) / 4;
         $hourlyRate  = $weeklyHours > 0 ? round($weeklyRate / $weeklyHours, 4) : 0;

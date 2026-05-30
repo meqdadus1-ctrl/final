@@ -27,9 +27,11 @@
         <input type="hidden" name="week_start"        value="{{ $data['weekStart'] }}">
         <input type="hidden" name="week_end"          value="{{ $data['weekEnd'] }}">
         <input type="hidden" name="hours_worked"        value="{{ $data['hoursWorked'] }}">
+        <input type="hidden" name="scheduled_hours"     value="{{ $data['scheduledHours'] }}">
         <input type="hidden" id="overtime_hours_hidden" name="overtime_hours" value="{{ $data['overtimeHours'] }}">
         <input type="hidden" id="overtime_rate_hidden"  name="overtime_rate"  value="{{ $data['overtimeRate'] ?? $data['employee']->overtime_rate ?? 1.5 }}">
         <input type="hidden" name="late_minutes" value="{{ $data['lateMinutes'] }}">
+        <input type="hidden" id="late_factor_hidden" name="late_factor" value="{{ $data['lateFactor'] }}">
         <input type="hidden" name="hourly_rate" value="{{ $data['hourlyRate'] }}">
         <input type="hidden" name="salary_multiplier"   value="{{ $data['salaryMultiplier'] }}">
         <input type="hidden" id="balance_before_hidden" name="balance_before" value="{{ $data['currentBalance'] }}">
@@ -148,8 +150,13 @@
                                 <tr>
                                     <td class="px-3 py-2">
                                         <span class="badge bg-primary me-2">A</span>
-                                        ساعات العمل
-                                        <small class="text-muted">{{ $data['hoursWorked'] }} ساعة × {{ number_format($data['hourlyRate'], 2) }}@if($data['salaryMultiplier'] != 1) × {{ $data['salaryMultiplier'] }}@endif</small>
+                                        ساعات العمل العادية
+                                        <small class="text-muted">
+                                            {{ number_format($data['regularHours'], 2) }} ساعة × {{ number_format($data['hourlyRate'], 2) }}@if($data['salaryMultiplier'] != 1) × {{ $data['salaryMultiplier'] }}@endif
+                                            @if($data['lateMinutes'] > 0)
+                                                <span class="text-muted"> (إجمالي {{ $data['hoursWorked'] }}س + {{ $data['lateMinutes'] }}د تأخير − {{ $data['overtimeHours'] }}س أوفرتايم)</span>
+                                            @endif
+                                        </small>
                                     </td>
                                     <td class="text-success fw-bold text-end px-3 py-2" style="min-width:130px">
                                         + {{ number_format($data['salaryA'], 2) }} ₪
@@ -203,6 +210,38 @@
                                                 style="max-width:100px"
                                                 value="0" step="1" min="0">
                                         </div>
+                                    </td>
+                                </tr>
+
+                                {{-- D0: خصم التأخير — معامله قابل للتعديل --}}
+                                <tr class="{{ $data['lateMinutes'] > 0 ? 'table-warning' : '' }}">
+                                    <td class="px-3 py-2">
+                                        <span class="badge bg-secondary me-2">D0</span>
+                                        خصم التأخير
+                                        @if($data['lateMinutes'] > 0)
+                                            <div class="d-flex gap-2 mt-1 align-items-center flex-wrap">
+                                                <span class="small text-muted">{{ $data['lateMinutes'] }} دقيقة</span>
+                                                <div>
+                                                    <label class="form-label small text-muted mb-0">معامل ×</label>
+                                                    <input type="number" id="late_factor_input"
+                                                        step="0.1" min="0" max="5"
+                                                        class="form-control form-control-sm"
+                                                        style="width:75px"
+                                                        value="{{ $data['lateFactor'] }}"
+                                                        oninput="syncLateFactor()">
+                                                </div>
+                                                <small class="text-muted">(0 = لا خصم)</small>
+                                            </div>
+                                        @else
+                                            <small class="text-muted"> — لا يوجد تأخير</small>
+                                        @endif
+                                    </td>
+                                    <td class="text-danger fw-bold text-end px-3 py-2" id="late_deduction_display">
+                                        @if($data['lateDeduction'] > 0)
+                                            − {{ number_format($data['lateDeduction'], 2) }} ₪
+                                        @else
+                                            <span class="text-muted">—</span>
+                                        @endif
                                     </td>
                                 </tr>
 
@@ -427,8 +466,27 @@
 const SALARY_A   = {{ (float) $data['salaryA'] }};
 const HOURLY_R   = {{ (float) $data['hourlyRate'] }};
 const SALARY_MUL = {{ (float) $data['salaryMultiplier'] }};
+const LATE_MIN   = {{ (int)   $data['lateMinutes'] }};
 
-let salaryB = {{ (float) $data['salaryB'] }};
+let salaryB      = {{ (float) $data['salaryB'] }};
+let lateDeduction = {{ (float) $data['lateDeduction'] }}; // يتغير مع معامل التأخير
+
+function syncLateFactor() {
+    const factor = parseFloat(document.getElementById('late_factor_input')?.value) || 0;
+    document.getElementById('late_factor_hidden').value = factor;
+
+    lateDeduction = Math.round((LATE_MIN / 60) * HOURLY_R * factor * 100) / 100;
+
+    const display = document.getElementById('late_deduction_display');
+    if (display) {
+        display.innerHTML = lateDeduction > 0
+            ? '− ' + lateDeduction.toFixed(2) + ' ₪'
+            : '<span class="text-muted">—</span>';
+        display.className = 'fw-bold text-end px-3 py-2 ' + (lateDeduction > 0 ? 'text-danger' : '');
+    }
+
+    calcNet();
+}
 
 // مزامنة الأوفرتايم عند تغيير الساعات أو المعامل
 function syncOT() {
@@ -475,11 +533,14 @@ function calcNet() {
         else deductions += val;
     });
 
-    // خصومات الراتب (D1 + D2)
+    // D0: خصم التأخير (يتحدث مع تغيير المعامل)
+    deductions += lateDeduction;
+
+    // D1 + D2: خصومات يدوية
     deductions += parseFloat(document.getElementById('absence_deduction').value) || 0;
     deductions += parseFloat(document.getElementById('manual_deductions').value) || 0;
 
-    // قسط السلفة (E)
+    // E: قسط السلفة
     deductions += parseFloat(document.getElementById('loan_deduction').value) || 0;
 
     const net = Math.max(0, additions - deductions);

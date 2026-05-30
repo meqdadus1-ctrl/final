@@ -39,7 +39,7 @@
                         <i class="fas fa-info-circle me-1"></i>
                         سيتم مطابقة الموظف عبر <strong>رقم البصمة</strong> الموجود في بيانات كل موظف.
                         أول بصمة في اليوم = وقت الدخول · آخر بصمة = وقت الخروج.
-                        أيام الجمعة تُتجاهل تلقائياً.
+
                         لن تُعدَّل السجلات اليدوية المدخلة مسبقاً.
                     </div>
                 </div>
@@ -93,6 +93,7 @@
     <div class="card mb-4">
         <div class="card-body">
             <form method="GET" action="{{ route('attendance.index') }}" class="row g-3 align-items-end">
+                <input type="hidden" name="searched" value="1">
                 <div class="col-md-2">
                     <label class="form-label">من تاريخ</label>
                     <input type="date" name="date_from" class="form-control" value="{{ request('date_from') }}">
@@ -127,7 +128,7 @@
                     <button type="submit" class="btn btn-primary flex-fill">
                         <i class="fas fa-search me-1"></i> بحث
                     </button>
-                    <a href="{{ route('attendance.index') }}" class="btn btn-secondary flex-fill">
+                    <a href="{{ route('attendance.index', ['reset' => 1]) }}" class="btn btn-secondary flex-fill">
                         <i class="fas fa-times me-1"></i> إلغاء
                     </a>
                 </div>
@@ -143,6 +144,10 @@
                 <a href="{{ route('attendance.export.employee', request()->query()) }}"
                    class="btn btn-success btn-sm">
                     <i class="fas fa-file-excel me-1"></i> تصدير Excel حسب الموظف
+                </a>
+                <a href="{{ route('attendance.export.shift', request()->query()) }}"
+                   class="btn btn-outline-success btn-sm">
+                    <i class="fas fa-clock me-1"></i> تصدير ساعات الوردية
                 </a>
                 <a href="{{ route('attendance.create') }}" class="btn btn-primary btn-sm">
                     <i class="fas fa-plus me-1"></i> إضافة يدوية

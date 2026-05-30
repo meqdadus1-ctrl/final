@@ -57,7 +57,6 @@ class DashboardController extends Controller
         $attendanceStats = DB::table('attendance')
             ->selectRaw("status, COUNT(*) as cnt")
             ->whereBetween('date', [$weekStart, $weekEnd])
-            ->whereRaw('DAYOFWEEK(date) != 6')
             ->groupBy('status')
             ->pluck('cnt', 'status');
 

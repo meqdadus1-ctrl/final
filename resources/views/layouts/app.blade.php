@@ -88,11 +88,51 @@
 
         .table th { background: #f8f9fa; font-weight: 600; font-size: 13px; }
         thead.table-dark th, .table-dark th { background: var(--fox-brown) !important; color: #fff !important; }
+
+        /* ── Sidebar Overlay ── */
+        .sidebar-overlay {
+            display: none;
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,.5);
+            z-index: 1040;
+        }
+        .sidebar-overlay.show { display: block; }
+
+        /* ── Mobile Toggle Button ── */
+        .sidebar-toggle {
+            display: none;
+            background: none; border: none;
+            color: var(--fox-brown); font-size: 22px;
+            padding: 0 8px 0 0; cursor: pointer;
+            line-height: 1;
+        }
+
+        /* ── Responsive ── */
+        @media (max-width: 991.98px) {
+            .sidebar {
+                transform: translateX(100%);
+                transition: transform .28s ease;
+                z-index: 1045;
+            }
+            .sidebar.sidebar-open { transform: translateX(0); }
+            .main-content { margin-right: 0 !important; }
+            .sidebar-toggle { display: inline-flex; align-items: center; }
+            /* Make card-body tables scrollable */
+            .card-body { overflow-x: auto; }
+        }
+
+        /* Smooth sidebar on desktop too */
+        @media (min-width: 992px) {
+            .sidebar { transition: none; }
+        }
     </style>
 </head>
 <body>
+    <!-- Sidebar Overlay (mobile) -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
     <!-- Sidebar -->
-    <div class="sidebar">
+    <div class="sidebar" id="mainSidebar">
         <div class="sidebar-logo">
             <a href="{{ route('dashboard') }}">
                 <img src="/fox.png" alt="Fox Plus HRM" />
@@ -210,8 +250,11 @@
     <!-- Main Content -->
     <div class="main-content">
         <div class="topbar">
+            <button class="sidebar-toggle" id="sidebarToggle" aria-label="القائمة">
+                <i class="fas fa-bars"></i>
+            </button>
             <span class="fw-bold">{{ $title ?? 'لوحة التحكم' }}</span>
-            <span class="text-muted">مرحباً، {{ auth()->user()->name }}</span>
+            <span class="text-muted me-auto ms-3">مرحباً، {{ auth()->user()->name }}</span>
         </div>
         @if(session('success'))
             <div class="alert alert-success alert-dismissible fade show" role="alert">
@@ -243,5 +286,27 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        (function () {
+            var sidebar  = document.getElementById('mainSidebar');
+            var overlay  = document.getElementById('sidebarOverlay');
+            var toggle   = document.getElementById('sidebarToggle');
+
+            function openSidebar()  { sidebar.classList.add('sidebar-open');    overlay.classList.add('show'); }
+            function closeSidebar() { sidebar.classList.remove('sidebar-open'); overlay.classList.remove('show'); }
+
+            toggle.addEventListener('click', function () {
+                sidebar.classList.contains('sidebar-open') ? closeSidebar() : openSidebar();
+            });
+            overlay.addEventListener('click', closeSidebar);
+
+            // Close sidebar on nav-link click (mobile)
+            sidebar.querySelectorAll('.nav-link').forEach(function (link) {
+                link.addEventListener('click', function () {
+                    if (window.innerWidth < 992) closeSidebar();
+                });
+            });
+        })();
+    </script>
 </body>
 </html>

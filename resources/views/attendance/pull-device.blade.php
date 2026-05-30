@@ -135,7 +135,6 @@
                             <div class="mt-4 d-flex justify-content-between align-items-center">
                                 <div class="text-muted small">
                                     <i class="fas fa-info-circle me-1"></i>
-                                    الجمعة تُحسب إجازة وتُتجاهل سجلاتها تلقائياً.
                                     السجلات اليدوية لن تُستبدَل.
                                 </div>
                                 <button type="submit" class="btn btn-success px-4" id="submitBtn">
@@ -152,7 +151,7 @@
                         <h6 class="fw-bold mb-3"><i class="fas fa-lightbulb text-warning me-2"></i> ملاحظات مهمة</h6>
                         <ul class="mb-0 text-muted small">
                             <li class="mb-1">الأسبوع يبدأ <strong>الخميس</strong> وينتهي <strong>الأربعاء</strong></li>
-                            <li class="mb-1">يوم <strong>الجمعة</strong> إجازة أسبوعية — يُتجاهل تلقائياً</li>
+
                             <li class="mb-1">الجهاز يُرسل نوع السجل (دخول/خروج) وسيُستخدم تلقائياً</li>
                             <li class="mb-1">إذا أُدخل الحضور يدوياً مسبقاً، لن يُستبدَل</li>
                             <li class="mb-1">الموظفون غير المُسجّل لهم رقم بصمة سيُتجاهلون</li>

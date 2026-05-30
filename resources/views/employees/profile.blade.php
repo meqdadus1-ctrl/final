@@ -75,6 +75,7 @@
         <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#work">💼 المعلومات الوظيفية</a></li>
         <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#documents">📎 المستندات <span class="badge bg-secondary">{{ $employee->documents->count() }}</span></a></li>
         <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#history">📈 السجل الوظيفي <span class="badge bg-secondary">{{ $employee->promotions->count() }}</span></a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#job-duties">📋 المهام الوظيفية <span class="badge bg-secondary">{{ $employee->jobDuties->count() }}</span></a></li>
         <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#payslips">💰 الرواتب</a></li>
         <li class="nav-item">
             <a class="nav-link" data-bs-toggle="tab" href="#finance">
@@ -485,6 +486,15 @@
                     <div class="card shadow-sm">
                         <div class="card-header fw-semibold bg-success text-white">➕ إضافة حركة وظيفية</div>
                         <div class="card-body">
+                            @if($errors->any())
+                            <div class="alert alert-danger py-2 mb-3">
+                                <ul class="mb-0 ps-3 small">
+                                    @foreach($errors->all() as $error)
+                                    <li>{{ $error }}</li>
+                                    @endforeach
+                                </ul>
+                            </div>
+                            @endif
                             <form action="{{ route('employees.promotions.store', $employee) }}" method="POST">
                                 @csrf
                                 <div class="mb-3">
@@ -520,11 +530,14 @@
                                     </select>
                                 </div>
                                 <div class="mb-3" id="salary-fields">
-                                    <label class="form-label">الراتب الحالي ← الجديد</label>
+                                    <label class="form-label">أجر الساعة الحالي ← الجديد</label>
                                     <div class="d-flex gap-2">
-                                        <input type="number" name="from_salary" class="form-control form-control-sm"
-                                            value="{{ $employee->salary }}" placeholder="الحالي">
-                                        <input type="number" name="to_salary" class="form-control form-control-sm" placeholder="الجديد">
+                                        <input type="number" name="from_salary" step="0.01" min="0"
+                                            class="form-control form-control-sm bg-light"
+                                            value="{{ number_format((float)($employee->hourly_rate ?? 0), 2, '.', '') }}"
+                                            readonly title="يُعبأ تلقائياً من بيانات الموظف">
+                                        <input type="number" name="to_salary" step="0.01" min="0"
+                                            class="form-control form-control-sm" placeholder="أجر الساعة الجديد">
                                     </div>
                                 </div>
                                 <div class="mb-3">
@@ -600,7 +613,64 @@
             </div>
         </div>
 
-        {{-- ===== TAB 5: PAYSLIPS (Weekly Salary Payments) ===== --}}
+        {{-- ===== TAB 5: JOB DUTIES ===== --}}
+        <div class="tab-pane fade" id="job-duties">
+            <div class="row g-4">
+
+                {{-- Add Duty Form --}}
+                <div class="col-md-4">
+                    <div class="card shadow-sm">
+                        <div class="card-header fw-semibold bg-primary text-white">➕ إضافة مهمة وظيفية</div>
+                        <div class="card-body">
+                            <form action="{{ route('employees.job-duties.store', $employee) }}" method="POST">
+                                @csrf
+                                <div class="mb-3">
+                                    <label class="form-label fw-semibold">وصف المهمة <span class="text-danger">*</span></label>
+                                    <textarea name="title" class="form-control" rows="3" required
+                                        placeholder="مثال: إعداد التقارير المالية الشهرية..."></textarea>
+                                </div>
+                                <button type="submit" class="btn btn-primary w-100">
+                                    <i class="fas fa-plus me-1"></i> إضافة
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                {{-- Duties List --}}
+                <div class="col-md-8">
+                    @forelse($employee->jobDuties as $index => $duty)
+                    <div class="card shadow-sm mb-2">
+                        <div class="card-body py-3 d-flex justify-content-between align-items-start gap-3">
+                            <div class="d-flex gap-3 align-items-start">
+                                <span class="badge bg-primary bg-opacity-75 rounded-circle d-flex align-items-center justify-content-center"
+                                      style="width:28px;height:28px;font-size:12px;flex-shrink:0;">
+                                    {{ $index + 1 }}
+                                </span>
+                                <span>{{ $duty->title }}</span>
+                            </div>
+                            <form action="{{ route('employees.job-duties.delete', $duty) }}" method="POST"
+                                  onsubmit="return confirm('حذف هذه المهمة؟')" style="flex-shrink:0;">
+                                @csrf @method('DELETE')
+                                <button class="btn btn-sm btn-outline-danger">🗑️</button>
+                            </form>
+                        </div>
+                    </div>
+                    @empty
+                    <div class="card shadow-sm">
+                        <div class="card-body text-center py-5 text-muted">
+                            <div style="font-size:3rem;">📋</div>
+                            <div>لم تُضَف أي مهام وظيفية بعد</div>
+                            <small>أضف المهام والمسؤوليات المرتبطة بهذا الموظف من النموذج على اليسار</small>
+                        </div>
+                    </div>
+                    @endforelse
+                </div>
+
+            </div>
+        </div>
+
+        {{-- ===== TAB 6: PAYSLIPS (Weekly Salary Payments) ===== --}}
         <div class="tab-pane fade" id="payslips">
 
             @php
@@ -935,5 +1005,27 @@ function togglePromoFields(type) {
     document.getElementById('salary-fields').style.display = showSalary ? '' : 'none';
 }
 togglePromoFields('promotion');
+
+// ── Tab persistence via URL hash ──
+// Wrapped in DOMContentLoaded so Bootstrap is fully loaded before use
+document.addEventListener('DOMContentLoaded', function () {
+    var tabs = document.querySelectorAll('#profileTabs a[data-bs-toggle="tab"]');
+
+    // Activate tab from URL hash, then fall back to sessionStorage
+    var target = window.location.hash || sessionStorage.getItem('profileTab');
+    if (target) {
+        var el = document.querySelector('#profileTabs a[href="' + target + '"]');
+        if (el) bootstrap.Tab.getOrCreateInstance(el).show();
+    }
+
+    // Save chosen tab on every switch
+    tabs.forEach(function (tab) {
+        tab.addEventListener('shown.bs.tab', function (e) {
+            var hash = e.target.getAttribute('href');
+            sessionStorage.setItem('profileTab', hash);
+            history.replaceState(null, null, hash);
+        });
+    });
+});
 </script>
 </x-app-layout>

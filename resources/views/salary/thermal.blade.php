@@ -133,37 +133,82 @@
             margin: 18px 2px 3px;
         }
 
+        /* رصيد قبل/بعد */
+        .balance-box {
+            border: 2px dashed #000;
+            padding: 5px 6px;
+            margin: 5px 0;
+            border-radius: 3px;
+        }
+        .balance-box .bal-title {
+            font-size: 10px;
+            text-align: center;
+            margin-bottom: 4px;
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+        .balance-box .bal-row {
+            display: table;
+            width: 100%;
+            padding: 2px 0;
+        }
+        .balance-box .bal-lbl {
+            display: table-cell;
+            font-size: 12px;
+            font-weight: bold;
+            color: #444;
+        }
+        .balance-box .bal-amt {
+            display: table-cell;
+            text-align: left;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .balance-box .bal-after .bal-lbl { color: #000; font-size: 13px; }
+        .balance-box .bal-after .bal-amt { font-size: 18px; }
+        .balance-box .bal-divider { border-top: 1px dotted #888; margin: 3px 0; }
+
         .no-print { display: block; }
 
- @media print {
-    body {
-        width: 70mm;
-        margin: 0;
-        padding: 2mm;
-    }
+        @media print {
+            .no-print { display: none !important; }
+            .extra-copy { page-break-before: always; }
 
-    @page {
-        margin: 0;
-        size: 80mm auto;
-    }
-}
+            body {
+                width: 70mm;
+                margin: 0;
+                padding: 2mm;
+            }
+
+            @page {
+                margin: 0;
+                size: 80mm auto;
+            }
+        }
     </style>
 </head>
 <body>
 
     <div class="no-print" style="text-align:center; margin-bottom:8px;">
-        <button onclick="window.print()"
-            style="padding:5px 16px; font-size:12px; cursor:pointer;
-                   background:#1e3a5f; color:#fff; border:none; border-radius:4px;">
-            🖨️ طباعة
-        </button>
-        <button onclick="window.close()"
-            style="padding:5px 12px; font-size:12px; cursor:pointer;
-                   background:#888; color:#fff; border:none; border-radius:4px; margin-right:4px;">
-            إغلاق
-        </button>
+        <div style="display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap; justify-content:center;">
+            <label style="font-size:12px; font-weight:bold;">عدد النسخ:</label>
+            <input type="number" id="copies-count" value="1" min="1" max="10"
+                style="width:50px; padding:4px; font-size:13px; text-align:center;
+                       border:1px solid #999; border-radius:4px;">
+            <button onclick="printWithCopies()"
+                style="padding:5px 16px; font-size:12px; cursor:pointer;
+                       background:#1e3a5f; color:#fff; border:none; border-radius:4px;">
+                🖨️ طباعة
+            </button>
+            <button onclick="window.close()"
+                style="padding:5px 12px; font-size:12px; cursor:pointer;
+                       background:#888; color:#fff; border:none; border-radius:4px;">
+                إغلاق
+            </button>
+        </div>
     </div>
 
+    <div id="receipt">
     {{-- العنوان --}}
     <div class="center bold large">استمارة راتب موظف</div>
     <div class="divider2"></div>
@@ -280,11 +325,19 @@
     </div>
 
     {{-- الرصيد --}}
-    @if($salary->balance_after !== null)
-    <div class="row"><span class="lbl small">رصيد قبل:</span><span class="val small">{{ number_format($salary->balance_before ?? 0, 2) }} ₪</span></div>
-    <div class="row"><span class="lbl small">رصيد بعد:</span><span class="val small bold">{{ number_format($salary->balance_after, 2) }} ₪</span></div>
+    <div class="balance-box">
+        <div class="bal-title">— الرصيد —</div>
+        <div class="bal-row">
+            <span class="bal-lbl">قبل الصرف</span>
+            <span class="bal-amt">{{ number_format($salary->balance_before ?? 0, 2) }} ₪</span>
+        </div>
+        <div class="bal-divider"></div>
+        <div class="bal-row bal-after">
+            <span class="bal-lbl">الرصيد الحالي</span>
+            <span class="bal-amt">{{ number_format($currentBalance, 2) }} ₪</span>
+        </div>
+    </div>
     <div class="divider"></div>
-    @endif
 
     {{-- ملاحظات --}}
     @if($salary->notes)
@@ -305,10 +358,29 @@
     <div class="center small gray" style="margin-top:3px;">
         {{ config('app.name') }} — {{ now()->format('d/m/Y H:i') }}
     </div>
+    </div>{{-- end #receipt --}}
 
     <script>
         document.documentElement.setAttribute('dir', 'rtl');
         document.body.setAttribute('dir', 'rtl');
+
+        function printWithCopies() {
+            const copies = Math.max(1, parseInt(document.getElementById('copies-count').value) || 1);
+            const receipt = document.getElementById('receipt');
+            const clones = [];
+
+            for (let i = 1; i < copies; i++) {
+                const clone = receipt.cloneNode(true);
+                clone.id = 'receipt-copy-' + i;
+                clone.classList.add('extra-copy');
+                receipt.parentNode.appendChild(clone);
+                clones.push(clone);
+            }
+
+            window.print();
+
+            clones.forEach(el => el.remove());
+        }
     </script>
 </body>
 </html>

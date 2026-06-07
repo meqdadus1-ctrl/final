@@ -180,8 +180,8 @@ class SalaryController extends Controller
         $scheduledHours = round($shiftHoursPerDay * $workDays, 2);
         $overtimeHours  = max(0.0, round($hoursWorked - $scheduledHours, 2));
         $regularHours   = round($hoursWorked - $overtimeHours, 2);
-        $salaryA        = round($regularHours * $hourlyRate * $salaryMultiplier, 2);
-        $salaryB        = round($overtimeHours * $hourlyRate * $overtimeRate * $salaryMultiplier, 2);
+        $salaryA        = round($regularHours  * $hourlyRate * $salaryMultiplier, 2);
+        $salaryB        = round($overtimeHours * $hourlyRate * $overtimeRate      * $salaryMultiplier, 2);
         $lateDeduction  = 0.0;
 
         /* ---- السلفة النشطة ---- */
@@ -290,26 +290,20 @@ class SalaryController extends Controller
         $manualAdditions  = $adjAdditions + $formAdditions;
         $manualDeductions = $adjDeductions;
 
-        /* ---- حساب الراتب (تقريب لمنزلتين عشريتين) ---- */
-        $salaryMultiplier = (float) $request->salary_multiplier;
-        $overtimeRate     = (float) ($request->overtime_rate ?? $employee->overtime_rate ?? 1.5);
-        $lateMinutes      = (int) ($request->late_minutes ?? 0);
+        /* ---- قراءة نتائج الاحتساب كما عُرضت وأُقرَّت في نموذج المراجعة ---- */
+        $salaryFromHours    = (float)($request->salary_from_hours    ?? 0);
+        $salaryFromOvertime = (float)($request->salary_from_overtime ?? 0);
+        $lateDeduction      = (float)($request->late_deduction       ?? 0);
+        $overtimeHours      = (float)($request->overtime_hours       ?? 0);
+        $overtimeRate       = (float)($request->overtime_rate        ?? $employee->overtime_rate ?? 1.5);
+        $salaryMultiplier   = (float)($request->salary_multiplier    ?? 1);
+        $lateMinutes        = (int)  ($request->late_minutes         ?? 0);
 
-        // الأوفرتايم = إجمالي العمل − (أيام الدوام × ساعات الوردية من الفورم)
-        $hoursWorked      = (float) $request->hours_worked;
-        $scheduledHours   = (float) ($request->scheduled_hours ?? 0);
-        $overtimeHours    = $scheduledHours > 0
-            ? max(0.0, round($hoursWorked - $scheduledHours, 2))
-            : max(0.0, (float)($request->overtime_hours ?? 0));
-        $regularHours     = round($hoursWorked - $overtimeHours, 2);
-        $salaryA          = round($regularHours * (float)$request->hourly_rate * $salaryMultiplier, 2);
-        $salaryB          = round($overtimeHours * (float)$request->hourly_rate * $overtimeRate * $salaryMultiplier, 2);
-        $lateDeduction    = 0.0;
-        $grossSalary      = $salaryA + $salaryB + round($manualAdditions, 2);
+        $grossSalary = $salaryFromHours + $salaryFromOvertime + round($manualAdditions, 2);
 
         $salaryDeductions = $lateDeduction
-                          + (float)($request->absence_deduction ?? 0)
-                          + (float)($request->manual_deductions ?? 0)
+                          + (float)($request->absence_deduction  ?? 0)
+                          + (float)($request->manual_deductions  ?? 0)
                           + $manualDeductions
                           + (float)($request->loan_deduction_amount ?? 0);
 
@@ -321,10 +315,12 @@ class SalaryController extends Controller
             'week_start'            => $request->week_start,
             'week_end'              => $request->week_end,
             'hours_worked'          => (float)$request->hours_worked,
-            'overtime_hours'        => (float)($request->overtime_hours ?? 0),
+            'overtime_hours'        => $overtimeHours,
             'hourly_rate'           => (float)$request->hourly_rate,
             'salary_multiplier'     => $salaryMultiplier,
+            'overtime_rate'         => $overtimeRate,
             'late_minutes'          => $lateMinutes,
+            'late_factor'           => (float)($request->late_factor ?? 0),
             'late_deduction'        => $lateDeduction,
             'absence_deduction'     => (float)($request->absence_deduction ?? 0),
             'manual_additions'      => $manualAdditions,
@@ -343,14 +339,11 @@ class SalaryController extends Controller
         ];
 
         // أضف الحقول الاختيارية فقط إذا كان العمود موجوداً في الجدول
-        if (Schema::hasColumn('salary_payments', 'overtime_rate')) {
-            $paymentData['overtime_rate'] = $overtimeRate;
-        }
         if (Schema::hasColumn('salary_payments', 'salary_from_hours')) {
-            $paymentData['salary_from_hours'] = $salaryA;
+            $paymentData['salary_from_hours'] = $salaryFromHours;
         }
         if (Schema::hasColumn('salary_payments', 'salary_from_overtime')) {
-            $paymentData['salary_from_overtime'] = $salaryB;
+            $paymentData['salary_from_overtime'] = $salaryFromOvertime;
         }
         if (Schema::hasColumn('salary_payments', 'adjustments_total')) {
             $paymentData['adjustments_total'] = $manualAdditions - $manualDeductions;

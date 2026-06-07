@@ -108,15 +108,24 @@
                             <tr class="table-light">
                                 <td colspan="2" class="px-3 py-2 fw-semibold small text-uppercase text-muted">الإضافات</td>
                             </tr>
-                            @php $salaryA = round($salary->hours_worked * ($salary->hourly_rate ?? 0), 2); @endphp
+                            @php $salaryA = (float)($salary->salary_from_hours ?? 0); @endphp
                             <tr>
-                                <td class="px-3"><span class="badge bg-primary me-2">A</span>ساعات العمل ({{ $salary->hours_worked }} ساعة)</td>
+                                <td class="px-3">
+                                    <span class="badge bg-primary me-2">A</span>ساعات العمل
+                                    <small class="text-muted">{{ $salary->hours_worked }} ساعة × {{ number_format($salary->hourly_rate ?? 0, 2) }} ₪</small>
+                                </td>
                                 <td class="text-success fw-bold text-end px-3">+ {{ number_format($salaryA, 2) }} ₪</td>
                             </tr>
                             @if($salary->overtime_hours > 0)
-                            @php $salaryB = round($salary->overtime_hours * ($salary->hourly_rate ?? 0) * ($salary->employee?->overtime_rate ?? 1.5), 2); @endphp
+                            @php
+                                $salaryB     = (float)($salary->salary_from_overtime ?? 0);
+                                $premiumRate = round(($salary->overtime_rate ?? 1.5) - 1, 2);
+                            @endphp
                             <tr>
-                                <td class="px-3"><span class="badge bg-info me-2">B</span>الأوفرتايم ({{ $salary->overtime_hours }} ساعة)</td>
+                                <td class="px-3">
+                                    <span class="badge bg-info me-2">B</span>علاوة أوفرتايم
+                                    <small class="text-muted">{{ $salary->overtime_hours }} ساعة × معامل +{{ $premiumRate }} × {{ number_format($salary->hourly_rate ?? 0, 2) }} ₪</small>
+                                </td>
                                 <td class="text-success fw-bold text-end px-3">+ {{ number_format($salaryB, 2) }} ₪</td>
                             </tr>
                             @endif

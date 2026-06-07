@@ -34,7 +34,10 @@
         <input type="hidden" id="late_factor_hidden" name="late_factor" value="{{ $data['lateFactor'] }}">
         <input type="hidden" name="hourly_rate" value="{{ $data['hourlyRate'] }}">
         <input type="hidden" name="salary_multiplier"   value="{{ $data['salaryMultiplier'] }}">
-        <input type="hidden" id="balance_before_hidden" name="balance_before" value="{{ $data['currentBalance'] }}">
+        <input type="hidden" id="balance_before_hidden"        name="balance_before"        value="{{ $data['currentBalance'] }}">
+        <input type="hidden" id="salary_from_hours_hidden"   name="salary_from_hours"    value="{{ $data['salaryA'] }}">
+        <input type="hidden" id="salary_from_overtime_hidden" name="salary_from_overtime" value="{{ $data['salaryB'] }}">
+        <input type="hidden" id="late_deduction_hidden"       name="late_deduction"       value="{{ $data['lateDeduction'] }}">
 
         <div class="row g-4">
 
@@ -153,12 +156,10 @@
                                         ساعات العمل العادية
                                         <small class="text-muted">
                                             {{ number_format($data['regularHours'], 2) }} ساعة × {{ number_format($data['hourlyRate'], 2) }}@if($data['salaryMultiplier'] != 1) × {{ $data['salaryMultiplier'] }}@endif
-                                            @if($data['lateMinutes'] > 0)
-                                                <span class="text-muted"> (إجمالي {{ $data['hoursWorked'] }}س + {{ $data['lateMinutes'] }}د تأخير − {{ $data['overtimeHours'] }}س أوفرتايم)</span>
-                                            @endif
+                                            <span class="text-muted"> (من إجمالي {{ number_format($data['hoursWorked'], 2) }}س — {{ number_format($data['overtimeHours'], 2) }}س أوفرتايم)</span>
                                         </small>
                                     </td>
-                                    <td class="text-success fw-bold text-end px-3 py-2" style="min-width:130px">
+                                    <td class="text-success fw-bold text-end px-3 py-2" id="salary_a_display" style="min-width:130px">
                                         + {{ number_format($data['salaryA'], 2) }} ₪
                                     </td>
                                 </tr>
@@ -168,12 +169,13 @@
                                     <td class="px-3 py-2">
                                         <span class="badge bg-info me-2">B</span>
                                         الأوفرتايم
+                                        <small class="text-muted d-block mb-1">ساعة × أجر الساعة × المعامل (مرة ونص = 150%)</small>
                                         <div class="d-flex gap-2 mt-1 align-items-center flex-wrap">
                                             <div>
-                                                <label class="form-label small text-muted mb-0">ساعات</label>
-                                                <input type="number" id="ot_hours_input" step="0.5" min="0"
+                                                <label class="form-label small text-muted mb-0">ساعات أوفرتايم</label>
+                                                <input type="number" id="ot_hours_input" step="0.01" min="0"
                                                     class="form-control form-control-sm calc-input"
-                                                    style="width:80px"
+                                                    style="width:90px"
                                                     value="{{ $data['overtimeHours'] }}"
                                                     oninput="syncOT()">
                                             </div>
@@ -463,19 +465,21 @@
 </div>
 
 <script>
-const SALARY_A   = {{ (float) $data['salaryA'] }};
-const HOURLY_R   = {{ (float) $data['hourlyRate'] }};
-const SALARY_MUL = {{ (float) $data['salaryMultiplier'] }};
-const LATE_MIN   = {{ (int)   $data['lateMinutes'] }};
+const HOURLY_R    = {{ (float) $data['hourlyRate'] }};
+const SALARY_MUL  = {{ (float) $data['salaryMultiplier'] }};
+const LATE_MIN    = {{ (int)   $data['lateMinutes'] }};
+const TOTAL_HOURS = {{ (float) $data['hoursWorked'] }};
 
-let salaryB      = {{ (float) $data['salaryB'] }};
-let lateDeduction = {{ (float) $data['lateDeduction'] }}; // يتغير مع معامل التأخير
+let salaryA       = {{ (float) $data['salaryA'] }};
+let salaryB       = {{ (float) $data['salaryB'] }};
+let lateDeduction = {{ (float) $data['lateDeduction'] }};
 
 function syncLateFactor() {
     const factor = parseFloat(document.getElementById('late_factor_input')?.value) || 0;
-    document.getElementById('late_factor_hidden').value = factor;
+    document.getElementById('late_factor_hidden').value    = factor;
 
     lateDeduction = Math.round((LATE_MIN / 60) * HOURLY_R * factor * 100) / 100;
+    document.getElementById('late_deduction_hidden').value = lateDeduction;
 
     const display = document.getElementById('late_deduction_display');
     if (display) {
@@ -488,21 +492,28 @@ function syncLateFactor() {
     calcNet();
 }
 
-// مزامنة الأوفرتايم عند تغيير الساعات أو المعامل
+// مزامنة الأوفرتايم — يُعيد حساب A (عادي) و B (أوفرتايم كامل ×المعامل)
 function syncOT() {
-    const otHours = parseFloat(document.getElementById('ot_hours_input').value) || 0;
-    const otRate  = parseFloat(document.getElementById('ot_rate_input').value)  || 1.5;
+    const otHours     = parseFloat(document.getElementById('ot_hours_input').value) || 0;
+    const otRate      = parseFloat(document.getElementById('ot_rate_input').value)  || 1.5;
+    const regularHours = Math.max(0, Math.round((TOTAL_HOURS - otHours) * 100) / 100);
 
-    // تحديث الحقول المخفية
     document.getElementById('overtime_hours_hidden').value = otHours;
     document.getElementById('overtime_rate_hidden').value  = otRate;
 
-    // إعادة حساب قيمة B
-    salaryB = Math.round(otHours * HOURLY_R * otRate * SALARY_MUL * 100) / 100;
+    // A = ساعات عادية × أجر الساعة
+    salaryA = Math.round(regularHours * HOURLY_R * SALARY_MUL * 100) / 100;
+    document.getElementById('salary_from_hours_hidden').value = salaryA;
 
-    // عرض القيمة
+    const aEl = document.getElementById('salary_a_display');
+    if (aEl) aEl.textContent = '+ ' + salaryA.toFixed(2) + ' ₪';
+
+    // B = ساعات أوفرتايم × أجر الساعة × المعامل الكامل (مثلاً 1.5)
+    salaryB = Math.round(otHours * HOURLY_R * otRate * SALARY_MUL * 100) / 100;
+    document.getElementById('salary_from_overtime_hidden').value = salaryB;
+
     const bEl = document.getElementById('salary_b_display');
-    if (bEl) bEl.textContent = '+ ' + salaryB.toFixed(2) + ' ₪';
+    if (bEl) bEl.textContent = salaryB > 0 ? '+ ' + salaryB.toFixed(2) + ' ₪' : '—';
 
     calcNet();
 }
@@ -517,8 +528,8 @@ function calcNet() {
     let additions = 0;
     let deductions = 0;
 
-    // A + B (B يتغير عند تعديل الأوفرتايم)
-    additions += SALARY_A + salaryB;
+    // A + B (يتغيران عند تعديل الأوفرتايم)
+    additions += salaryA + salaryB;
 
     // C: إضافات يدوية مباشرة
     additions += parseFloat(document.getElementById('manual_additions').value) || 0;

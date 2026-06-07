@@ -114,34 +114,25 @@ class LedgerService
             $overtimeRate     = (float)($payment->overtime_rate ?? $emp->overtime_rate ?? 1.5);
 
             // 1. راتب الساعات العادية
-            // نُعيد دقائق التأخير للساعات — الخصم يتم عبر deduction_late فقط (لا مزدوج)
-            if ($payment->gross_salary - ($payment->manual_additions ?? 0) > 0) {
-                $adjustedHours = (float)$payment->hours_worked + ((int)$payment->late_minutes / 60);
-                $regularHours  = max(0.0, $adjustedHours - (float)($payment->overtime_hours ?? 0));
-                $baseSalary    = round($regularHours * (float)($payment->hourly_rate ?? 0) * $salaryMultiplier, 2);
-                if ($baseSalary > 0) {
-                    $multiplierNote = $salaryMultiplier != 1 ? " × {$salaryMultiplier}" : '';
-                    $this->addEntry(
-                        $emp->id, 'salary', $baseSalary, 0,
-                        "راتب أسبوعي — " . number_format($regularHours, 2) . " ساعة × " . number_format($payment->hourly_rate ?? 0, 4) . " ₪{$multiplierNote}",
-                        $paymentDate, $periodOpts
-                    );
-                }
+            $baseSalary   = (float)($payment->salary_from_hours ?? 0);
+            $regularHours = max(0.0, (float)$payment->hours_worked - (float)($payment->overtime_hours ?? 0));
+            if ($baseSalary > 0) {
+                $multiplierNote = $salaryMultiplier != 1 ? " × {$salaryMultiplier}" : '';
+                $this->addEntry(
+                    $emp->id, 'salary', $baseSalary, 0,
+                    "راتب أسبوعي — " . number_format($regularHours, 2) . " ساعة × " . number_format((float)($payment->hourly_rate ?? 0), 4) . " ₪{$multiplierNote}",
+                    $paymentDate, $periodOpts
+                );
             }
 
-            // 2. الأوفرتايم (مع تطبيق معامل الراتب ومعامل الأوفرتايم المحفوظ)
-            if ((float)$payment->overtime_hours > 0) {
-                $overtimePay = round(
-                    $payment->overtime_hours * (float)($payment->hourly_rate ?? 0) * $overtimeRate * $salaryMultiplier,
-                    2
+            // 2. أجر الأوفرتايم (المعامل الكامل × أجر الساعة × ساعات الأوفرتايم)
+            $overtimePay = (float)($payment->salary_from_overtime ?? 0);
+            if ($overtimePay > 0) {
+                $this->addEntry(
+                    $emp->id, 'overtime', $overtimePay, 0,
+                    "أوفرتايم — " . number_format((float)($payment->overtime_hours ?? 0), 2) . " ساعة × {$overtimeRate} × " . number_format((float)($payment->hourly_rate ?? 0), 4) . " ₪",
+                    $paymentDate, $periodOpts
                 );
-                if ($overtimePay > 0) {
-                    $this->addEntry(
-                        $emp->id, 'overtime', $overtimePay, 0,
-                        "أوفرتايم — {$payment->overtime_hours} ساعة × معامل {$overtimeRate}",
-                        $paymentDate, $periodOpts
-                    );
-                }
             }
 
             // 3. التعديلات اليدوية (Adjustments)
